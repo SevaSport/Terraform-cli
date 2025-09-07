@@ -34,11 +34,8 @@
 - 
 
 ```bash
-https://github.com/SevaSport/server-scripts.git
-curl -O https://raw.githubusercontent.com/sevasport/server-scripts/main/initial-setup.sh
-chmod +x initial-setup.sh
-```
-The are 2 files that you schould 
-```bash
+git clone https://github.com/SevaSport/Terraform-cli.git ./Terraform-cli
+cd ./Terraform-cli
+chmod +x run.sh
 ./run.sh
 ```
