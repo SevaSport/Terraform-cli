@@ -1,0 +1,43 @@
+---
+vps:
+  # Список полезных пакетов, которыми часто пользуются
+  packages:
+    - nano
+    - mc
+    - tree
+    - net-tools
+    - htop
+
+  # Отключение IPv6
+  ipv6-disable: true # Запускает скрипт switch-ipv6.sh
+
+  # Список приложений на сервере
+  applications:
+    # Изменение порта для сервера ssh
+    ssh:
+      port: 60022
+    fail2ban:
+    ufw:
+    nginx:
+    docker:
+    openvpn:
+      port: 61194
+    outline:
+      port:
+        api: 61195
+        keys: 61196
+
+  # Пользователи, которыее должны быть  
+  users:
+    # Пользователь, в котором будут все данные контейнеров
+    - name: "docker"
+      pass: "!password#" # Напиши сюда свой пароль !
+      home-dir: true
+      ssh-copy-id: true
+      sudoer: false
+    # Пользователь для сервисных работ и настройки VPS
+    - name: "ssh"
+      pass: "!password#" # Напиши сюда свой пароль !
+      home-dir: false
+      ssh-copy-id: true
+      sudoer: true
