@@ -7,6 +7,9 @@ vps:
     - tree
     - net-tools
     - htop
+    - ncdu
+    - ufw
+    - fail2ban
 
   # Отключение IPv6
   ipv6-disable: true # Запускает скрипт switch-ipv6.sh
@@ -18,7 +21,6 @@ vps:
       port: 60022
     fail2ban:
     ufw:
-    nginx:
     docker:
     openvpn:
       port: 61194
@@ -29,15 +31,22 @@ vps:
 
   # Пользователи, которыее должны быть  
   users:
-    # Пользователь, в котором будут все данные контейнеров
+    # Пользователь, для управления контейнерами Docker
     - name: "docker"
-      pass: "!password#" # Напиши сюда свой пароль !
+      pass: "!@#QWE123qwe" # Напиши сюда свой пароль !
       home-dir: true
-      ssh-copy-id: true
+      allow_ssh: false # возможность подключения по SSH
       sudoer: false
     # Пользователь для сервисных работ и настройки VPS
     - name: "ssh"
-      pass: "!password#" # Напиши сюда свой пароль !
+      pass: "!@#QWE123qwe" # Напиши сюда свой пароль !
       home-dir: false
-      ssh-copy-id: true
+      allow_ssh: true
       sudoer: true
+
+# Настройки клиента запуска (локальная машина)
+client:
+  # Таймаут SSH-подключения в секундах (ConnectTimeout)
+  ssh-connect-timeout: 2
+  # Количество попыток переподключения по SSH
+  ssh-reconnect-attempts: 5

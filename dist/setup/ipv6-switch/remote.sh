@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Выполняется на VPS: если IPv6 ещё не отключён в sysctl.conf — дописываем параметры и применяем sysctl -p.
+
 # Проверка наличия строки для отключения IPv6
 if grep -q "net.ipv6.conf.all.disable_ipv6 = 1" /etc/sysctl.conf; then
     exit 0

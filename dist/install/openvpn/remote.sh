@@ -1,7 +1,16 @@
 #!/bin/bash
+# Выполняется на VPS: неинтерактивная установка OpenVPN через angristan/openvpn-install (если сервер ещё не развёрнут).
+set -euo pipefail
 
-curl -O https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
+OPENVPN_PORT="${OPENVPN_PORT:?}"
 
+cd /tmp
+if [[ -e /etc/openvpn/server/server.conf ]]; then
+    echo "OpenVPN already configured"
+    exit 0
+fi
+
+curl -fsSL -O https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
 chmod +x openvpn-install.sh
 
 export AUTO_INSTALL=y

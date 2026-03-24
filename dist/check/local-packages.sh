@@ -1,14 +1,15 @@
 #!/bin/bash
 
-title "Проверка необходимых локальных пакетов" "$BLUE"
+# Убеждаемся, что на управляющей машине есть sshpass (копирование ключа по паролю) и yq (разбор YAML).
+
+title "Проверка локальных утилит (sshpass, yq)" "$BLUE"
 
 # Список пакетов, которые необходимо установить локально
 request_packeges=(sshpass yq)
 
-# Устанавливает запрашиваемый пакет
+# Пытаемся поставить недостающий пакет через менеджер ОС; на Windows — только сообщение (ручная установка)
 install_package() {
     local package_name="$1"
-    # Устанавливаем $package_name в зависимости от ОС
     if [ "$OS" == "macos" ]; then
         message "$package_name не найден и будет установлен через Homebrew" "" "$YELLOW"
 
@@ -24,9 +25,9 @@ install_package() {
                 exit 1
             fi
         else
-            echo -e "${RED}Homebrew не установлен. Установите Homebrew, чтобы продолжить.${NC}"
-            echo -e "${BLUE}Вы можете установить Homebrew, выполнив следующую команду:${NC}"
-            echo -e "${YELLOW}/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"${NC}"
+            message "Homebrew не установлен" "установите Homebrew, чтобы продолжить" "$RED" "$RED"
+            message "Инструкция и команда установки" "https://brew.sh" "$BLUE" "$YELLOW"
+            exit 1
         fi
     elif [ "$OS" == "ubuntu" ]; then
         message "$package_name не найден и будет установлен через APT" "" "$YELLOW"
@@ -43,10 +44,16 @@ install_package() {
             step_status "Ошибка" "$RED"
             exit 1
         fi
+    elif [ "$OS" == "windows" ]; then
+        message "$package_name не найден" "Установите sshpass и yq вручную (Chocolatey, Scoop, либо запускайте скрипт из WSL/Ubuntu — см. spec.md)" "$RED" "$RED"
+        exit 1
+    else
+        message "$package_name" "автоустановка для этой ОС не настроена (см. spec.md)" "$RED" "$RED"
+        exit 1
     fi
 }
 
-# Проверка всех необходимых пакетов
+# Обход списка: уже в PATH — пропуск, иначе установка или выход с ошибкой
 for package in "${request_packeges[@]}"; do
     if command -v $package &> /dev/null; then
         message "$package" "OK" "$YELLOW" "$GREEN"

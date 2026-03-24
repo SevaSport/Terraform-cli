@@ -1,14 +1,17 @@
 #!/bin/bash
 
-title "Проверка данных для соединения с удаленной машиной" "$BLUE"
+# Перед первым SSH по паролю проверяем IP, порт, пользователя и пароль
+# из credentials.yml; пустые значения можно ввести интерактивно.
+
+title "Проверка данных подключения к VPS" "$BLUE"
 
 ##################
-# Проверка параметров для подключения к удаленному серверу
+# IP-адрес VPS (из credentials или ввод с проверкой IPv4)
 ##################
 # IP
 if [[ -z "$VPS_IP" || "$VPS_IP" == "****" ]]; then
     message "IP адрес" "Не указан" "$YELLOW" "$RED"
-    title "Указать IP адрес VPS можно в файле config.yml!" "$BLUE"
+    title "Укажите IP-адрес VPS в credentials.yml" "$BLUE"
     lines_to_clear=3
 
     while true; do
@@ -32,10 +35,12 @@ fi
 message "IP адрес" "$VPS_IP" "$YELLOW" "$GREEN"
 
 ##################
+# Порт SSH (1–65535)
+##################
 # PORT
 if [[ -z "$VPS_PORT" || "$VPS_PORT" == "****" ]]; then
     message "SSH порт" "Не указан" "$YELLOW" "$RED"
-    title "Указать SSH порт можно в файле config.yml!" "$BLUE"
+    title "Укажите порт SSH в credentials.yml" "$BLUE"
     lines_to_clear=3
 
     while true; do
@@ -67,10 +72,12 @@ fi
 message "SSH порт" "$VPS_PORT" "$YELLOW" "$GREEN"
 
 ##################
+# Учётная запись для первичного входа (часто root)
+##################
 # Имя пользователя
 if [[ -z "$VPS_USER" || "$VPS_USER" == "****" ]]; then
     message "Имя пользователя" "Не указано" "$YELLOW" "$RED"
-    title "Указать имя пользователя можно в файле config.yml!" "$BLUE"
+    title "Укажите пользователя SSH в credentials.yml" "$BLUE"
     lines_to_clear=3
 
     while true; do
@@ -124,6 +131,8 @@ if [[ -z "$VPS_USER" || "$VPS_USER" == "****" ]]; then
 fi
 message "Имя пользователя" "$VPS_USER" "$YELLOW" "$GREEN"
 
+##################
+# Пароль для sshpass/ssh-copy-id (скрытый ввод при отсутствии в файле)
 ##################
 # Пароль пользователя
 if [[ -z "$VPS_PASS" || "$VPS_PASS" == "****" ]]; then

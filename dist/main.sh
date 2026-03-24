@@ -1,83 +1,68 @@
 #!/bin/bash
 
-# Определение ОС
+# Сценарий после run.sh: сначала убеждаемся, что с вашего компьютера можно безопасно
+# управлять VPS, затем по очереди применяем настройки из config.yml / credentials.yml.
+
+#----------
+# У вас подходящая ОС и установлены yq и sshpass (без них скрипт не запустится).
 source $CHECK_SCRIPTS/local-os.sh
 
-# Проверка и установка необходмых программ
+# При необходимости доустановит недостающие утилиты (Homebrew или apt).
 source $CHECK_SCRIPTS/local-packages.sh
 
-# Данные для соединения
+#----------
+# Адрес и учётная запись VPS из credentials.yml (дальше — везде эти переменные).
 VPS_IP=$(yq e '.vps.ip' $CREDENTIALS)
 VPS_PORT=$(yq e '.vps.port' $CREDENTIALS)
 VPS_USER=$(yq e '.vps.user' $CREDENTIALS)
 VPS_PASS=$(yq e '.vps.pass' $CREDENTIALS)
 
 #----------
-# Проверка заполнения данных для подключения к виртуальной машине
+# Если IP/порт/логин/пароль не заданы — скрипт спросит их в терминале.
 source $VALIDATE_SCRIPTS/ssh-config.sh
 
 #----------
-# Проверка, что на локальной машине есть ssh-клиент и ssh-ключ
+# Проверка ssh и ключей; при отсутствии ключа — предложение создать.
 source $CHECK_SCRIPTS/local-ssh-key.sh
 
 #----------
-# Копирование локального ключа на удаленную машину, для правильной работы скрипта
-# В процессе дальнейшей настройки root пользователь будет отключен для ssh подключения
+# Копирование ключа на сервер и проверка входа без пароля (дальше работа идёт по ключу).
 source $CHECK_SCRIPTS/ssh-connection.sh
 
 #----------
-title "Выполенение команд на сервере" "$BLUE"
-# Отключение IPv6, если в конфиге это указано
-source $SETUP_SCRIPTS/ipv6-switch/local-shell.sh
-# Обновление библиотек
-source $INSTALL_SCRIPTS/update/local-shell.sh
+# Показ версии Ubuntu на VPS (ожидается поддерживаемый релиз по spec.md).
+source $CHECK_SCRIPTS/remote-os.sh
 
 #----------
-# Установка дополнительных пакетов
-source $INSTALL_SCRIPTS/packages/local-shell.sh
+# Дальше — изменения на самом сервере; порядок важен (сеть → SSH → фаервол → сервисы).
+title "Выполнение команд на удалённом сервере" "$BLUE"
+
+# Отключение IPv6 на сервере — только если задано в config.yml (иначе шаг пропускается внутри модуля).
+source $SETUP_SCRIPTS/ipv6-switch/task.sh
+# Обновление системы на VPS; при необходимости перезагрузка и ожидание.
+source $INSTALL_SCRIPTS/update/task.sh
 
 #----------
-# Установка приложений
+# Установка списка пакетов из config.yml (nano, ufw и т.д.).
+source $INSTALL_SCRIPTS/packages/task.sh
 
-# Добавление пользователей
-source $SETUP_SCRIPTS/users/add.sh
+#----------
+# Создание пользователей, sudo, ключи в authorized_keys — как в config.yml.
+source $SETUP_SCRIPTS/users/task.sh
 
-# Настройка ssh-сервера
+# Настройки безопасности sshd, смена порта SSH при необходимости, фаервол и fail2ban.
+source $SETUP_SCRIPTS/ssh-server/harden/task.sh
+source $SETUP_SCRIPTS/ssh-server/port/task.sh
+source $SETUP_SCRIPTS/ufw/task.sh
+source $SETUP_SCRIPTS/fail2ban/task.sh
 
-# Установка и настройка fail2ban
+# Установка Docker, если задано в applications.docker
+source $INSTALL_SCRIPTS/docker/task.sh
 
-# Установка и настройка ufw
+# Раскомментируйте, если в config.yml включён OpenVPN.
+# source $INSTALL_SCRIPTS/openvpn/task.sh
 
-
-# Установка Docker
-source $INSTALL_SCRIPTS/docker/local-shell.sh
-
-# Установка OpenVPN
-# source $INSTALL_SCRIPTS/openvpn/local-shell.sh
-
-# Установка Outline
-source $INSTALL_SCRIPTS/outline/local-shell.sh
-
+# VPN Outline
+source $INSTALL_SCRIPTS/outline/task.sh
 
 exit 0
-
-
-# # Настройка SSH (изменение порта)
-# SSH_PORT=$(yq e '.vps.applications.specific.ssh.port' $CONFIG_FILE)
-# echo -e "${YELLOW}Настройка SSH порта на $SSH_PORT...${NC}"
-# if sudo sed -i "s/#Port 22/Port $SSH_PORT/" /etc/ssh/sshd_config && sudo systemctl restart sshd; then
-#     echo -e "${GREEN}SSH успешно настроен на порт $SSH_PORT и перезапущен.${NC}"
-# else
-#     echo -e "${RED}Ошибка при настройке или перезапуске SSH.${NC}"
-# fi
-
-# # Настройка ufw (брандмауэра)
-# echo -e "${YELLOW}Настройка UFW (брандмауэра)...${NC}"
-# sudo ufw allow $SSH_PORT/tcp
-# sudo ufw allow $OPENVPN_PORT/udp
-# sudo ufw allow $OUTLINE_PORT/tcp
-# if sudo ufw enable; then
-#     echo -e "${GREEN}UFW успешно настроен.${NC}"
-# else
-#     echo -e "${RED}Ошибка при настройке UFW.${NC}"
-# fi
