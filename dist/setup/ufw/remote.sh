@@ -34,6 +34,10 @@ if [[ -n "${OUTLINE_KEYS_PORT:-}" ]]; then
     _sudo ufw allow "${OUTLINE_KEYS_PORT}/tcp" comment 'Outline keys' || true
 fi
 
+if [[ -n "${MTPROTO_PORT:-}" ]]; then
+    _sudo ufw allow "${MTPROTO_PORT}/tcp" comment 'MTProto proxy' || true
+fi
+
 enable_ufw() {
     # stdin нельзя отдавать и паролю sudo, и ufw — оборачиваем в bash -c
     _sudo bash -c 'echo y | ufw --force enable'

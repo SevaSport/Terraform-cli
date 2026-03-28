@@ -30,7 +30,7 @@ source $CHECK_SCRIPTS/local-ssh-key.sh
 source $CHECK_SCRIPTS/ssh-connection.sh
 
 #----------
-# Показ версии Ubuntu на VPS (ожидается поддерживаемый релиз по spec.md).
+# Проверка информации о VPS (Ubuntu 20+): ОС, CPU, ОЗУ, диск (см. remote-os.sh).
 source $CHECK_SCRIPTS/remote-os.sh
 
 #----------
@@ -64,5 +64,8 @@ source $INSTALL_SCRIPTS/docker/task.sh
 
 # VPN Outline
 source $INSTALL_SCRIPTS/outline/task.sh
+
+# MTProto-proxy (Telegram)
+source $INSTALL_SCRIPTS/mtproto/task.sh
 
 exit 0

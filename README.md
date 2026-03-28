@@ -24,7 +24,6 @@
    - усиление `sshd`, смена порта SSH из `applications.ssh.port` при настройке модуля;
    - UFW и fail2ban (если заданы в `applications`);
    - **Docker** — если в `config.yml` есть ключ `applications.docker`;
-   - **Outline VPN** — если есть `applications.outline` (нужен уже установленный Docker); в конце в консоль выводится JSON доступа для Outline Manager.
 
 Модуль **OpenVPN** в `main.sh` по умолчанию закомментирован; раскомментируйте строку с `openvpn/task.sh`, если нужен.
 
@@ -37,7 +36,7 @@
 | Файл | Назначение |
 |------|------------|
 | `credentials.yml` | IP, порт SSH, пользователь и пароль для **первого** входа и копирования ключа. Пароль и IP не коммитьте в открытый репозиторий. |
-| `config.yml` | Пакеты, флаги (например IPv6), блок `applications` (ssh, ufw, fail2ban, docker, openvpn, outline и т.д.), список пользователей на VPS, настройки клиента (`ssh-connect-timeout`, `ssh-reconnect-attempts`). |
+| `config.yml` | Пакеты, флаги (например IPv6), блок `applications` (ssh, ufw, fail2ban, docker, openvpn и т.д.), список пользователей на VPS, настройки клиента (`ssh-connect-timeout`, `ssh-reconnect-attempts`). |
 
 Приложения из `applications` обрабатываются только если для них объявлен ключ в YAML (см. `dist/libs/vps-config.sh`).
 
@@ -51,3 +50,5 @@ chmod +x run.sh
 ```
 
 Убедитесь, что в `credentials.yml` указан актуальный IP и что с вашей машины доступен SSH к VPS.
+
+Не забудьте раскоментировать строки в блоке applications `config.yml`

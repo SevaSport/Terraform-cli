@@ -92,7 +92,7 @@ try_ssh() {
         local user="$2"
         local pass="$3"
 
-        step_name "Поключение к SSH" "$YELLOW"
+        step_name "Поключение к SSH: порт $port + пароль ($user)" "$YELLOW"
         out=$(
             sshpass -p "$pass" ssh -o StrictHostKeyChecking=no -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=password -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no -p "$port" "$user@$VPS_IP" "exit" \
                 2>&1
@@ -100,7 +100,7 @@ try_ssh() {
         rc=$?
         printf '%s\n' "$out" >>"$SSH_CONNECTION_LOG"
         if is_host_key_changed_error "$out"; then
-            step_status "Обнаружено изменение host key" "$YELLOW"
+            step_status "host key changed" "$RED"
             # Очистка known_hosts
             clear_known_hosts_for_vps
             # повторная попытка подключения

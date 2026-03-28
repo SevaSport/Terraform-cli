@@ -22,12 +22,15 @@ vps:
     fail2ban:
     ufw:
     docker:
-    openvpn:
-      port: 61194
-    outline:
-      port:
-        api: 61195
-        keys: 61196
+    # openvpn:
+    #   port: 61194
+    # outline:
+    #   port:
+    #     api: 61195
+    #     keys: 61196
+    # mtproto:
+    #   port: 443
+    #   # secret: "32_hex_символа_или_оставьте_пустым_для_автогенерации"
 
   # Пользователи, которыее должны быть  
   users:
