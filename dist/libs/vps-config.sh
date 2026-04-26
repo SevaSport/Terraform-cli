@@ -2,13 +2,6 @@
 
 # Чтение config.yml (yq). До source нужна переменная CONFIGURATIONS. SSH не используется.
 
-# Убрать символы двойной кавычки из строки, как часто возвращает yq для строковых полей.
-# Параметры: $1 — исходная строка. Возврат: обработанная строка на stdout.
-_strip_yq_string_quotes() {
-    local s="$1"
-    printf '%s' "${s//\"/}"
-}
-
 # Узнать, объявлен ли в config.yml раздел vps.applications для указанного приложения (есть ли ключ в YAML).
 # Параметры: $1 — имя ключа (например docker, outline). Читает CONFIGURATIONS. Возврат: 0 если ключ есть, 1 если нет.
 config_application_enabled() {
@@ -20,7 +13,6 @@ config_application_enabled() {
 vps_ssh_application_port_optional() {
     local p
     p=$(yq e '(.vps.applications.ssh.port // "")' "$CONFIGURATIONS")
-    p=$(_strip_yq_string_quotes "$p")
     [[ "$p" == "null" ]] && p=""
     printf '%s' "$p"
 }
@@ -39,10 +31,8 @@ export_credentials_for_vps_user_named() {
     users_count=$(yq eval '.vps.users | length' "$CONFIGURATIONS")
     for ((i = 0; i < users_count; i++)); do
         name=$(yq ".vps.users[$i].name" "$CONFIGURATIONS")
-        name=$(_strip_yq_string_quotes "$name")
         if [[ "$name" == "$want" ]]; then
             pass=$(yq ".vps.users[$i].pass" "$CONFIGURATIONS")
-            pass=$(_strip_yq_string_quotes "$pass")
             export VPS_USER="$name"
             export VPS_PASS="$pass"
             [[ -n "$pass" ]] || return 2

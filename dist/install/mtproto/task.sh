@@ -32,7 +32,6 @@ load_mtproto_proxy_line() {
     local port image
     port=$(yq e '.vps.applications.mtproto.port // 443' "$CONFIGURATIONS")
     image=$(yq e '.vps.applications.mtproto.image // "telegrammessenger/proxy:latest"' "$CONFIGURATIONS")
-    image=$(_strip_yq_string_quotes "$image")
     [[ "$image" == "null" ]] && image="telegrammessenger/proxy:latest"
 
     run_ssh_bash \
@@ -45,10 +44,8 @@ install_mtproto() {
     local port image secret secret_q
     port=$(yq e '.vps.applications.mtproto.port // 443' "$CONFIGURATIONS")
     image=$(yq e '.vps.applications.mtproto.image // "telegrammessenger/proxy:latest"' "$CONFIGURATIONS")
-    image=$(_strip_yq_string_quotes "$image")
     [[ "$image" == "null" ]] && image="telegrammessenger/proxy:latest"
     secret=$(yq e '(.vps.applications.mtproto.secret // "")' "$CONFIGURATIONS")
-    secret=$(_strip_yq_string_quotes "$secret")
     [[ "$secret" == "null" ]] && secret=""
     secret_q=$(printf '%q' "$secret")
 

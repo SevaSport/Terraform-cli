@@ -1,3 +1,4 @@
+credentials.yml
 logs
 .DS_Store
 # локальная установка Pillow для tools/generate_demo_gif.py

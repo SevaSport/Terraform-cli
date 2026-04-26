@@ -27,6 +27,21 @@ check_user_exists() {
     return 1
 }
 
+# Устанавливает пароль пользователю через chpasswd, передавая учётные данные
+# через stdin SSH-сессии (не через аргумент команды, чтобы пароль не светился в ps aux).
+_set_remote_user_password() {
+    local name="$1" pass="$2"
+    local tmpscript rc
+    tmpscript=$(mktemp)
+    printf 'printf "%%s\\n" "${USER_NAME}:${USER_PASS}" | _sudo chpasswd\n' > "$tmpscript"
+    run_ssh_bash \
+        "$(printf 'export USER_NAME=%q USER_PASS=%q' "$name" "$pass")" \
+        "$tmpscript"
+    rc=$?
+    rm -f "$tmpscript"
+    return "$rc"
+}
+
 create_user() {
     local name="$1"
     local pass="$2"
@@ -51,7 +66,7 @@ create_user() {
     useradd_cmd="$useradd_cmd -s /bin/bash"
     useradd_cmd="$useradd_cmd '$name'"
 
-    if run_ssh "$useradd_cmd" && run_ssh "echo '$name:$pass' | chpasswd"; then
+    if run_ssh "$useradd_cmd" && _set_remote_user_password "$name" "$pass"; then
         step_status "создан$([ "$home_dir" = "true" ] && echo " с домашней директорией")" "$GREEN"
         return 0
     else
@@ -88,27 +103,35 @@ copy_ssh_key() {
     local name="$1"
     local allow_ssh="$2"
 
-    if [ "$allow_ssh" = "true" ]; then
-        local ssh_key_file
-        ssh_key_file=$(find_ssh_key)
+    [ "$allow_ssh" = "true" ] || return 0
 
-        if [ -n "$ssh_key_file" ] && [ -f "$ssh_key_file" ]; then
-            local ssh_key_content
-            ssh_key_content=$(cat "$ssh_key_file")
+    local ssh_key_file ssh_key_content tmpscript rc
+    ssh_key_file=$(find_ssh_key) || true
+    if [ -z "$ssh_key_file" ] || [ ! -f "$ssh_key_file" ]; then
+        message "Локальный публичный ключ (~/.ssh/*.pub)" "не найден" "$YELLOW" "$YELLOW"
+        return 0
+    fi
 
-            step_name " копирование публичного ключа" "$YELLOW"
-            if run_ssh "mkdir -p /home/$name/.ssh && \
-                        echo '$ssh_key_content' | tee -a /home/$name/.ssh/authorized_keys >/dev/null && \
-                        chown -R $name:$name /home/$name/.ssh && \
-                        chmod 700 /home/$name/.ssh && \
-                        chmod 600 /home/$name/.ssh/authorized_keys"; then
-                step_status "OK" "$GREEN"
-            else
-                step_status "ошибка" "$RED"
-            fi
-        else
-            message "Локальный публичный ключ (~/.ssh/*.pub)" "не найден" "$YELLOW" "$YELLOW"
-        fi
+    ssh_key_content=$(cat "$ssh_key_file")
+    tmpscript=$(mktemp)
+    cat > "$tmpscript" <<'EOF'
+_sudo mkdir -p "/home/${TARGET_USER}/.ssh"
+printf '%s\n' "${SSH_PUB_KEY}" | _sudo tee -a "/home/${TARGET_USER}/.ssh/authorized_keys" >/dev/null
+_sudo chown -R "${TARGET_USER}:${TARGET_USER}" "/home/${TARGET_USER}/.ssh"
+_sudo chmod 700 "/home/${TARGET_USER}/.ssh"
+_sudo chmod 600 "/home/${TARGET_USER}/.ssh/authorized_keys"
+EOF
+
+    step_name " копирование публичного ключа" "$YELLOW"
+    run_ssh_bash \
+        "$(printf 'export TARGET_USER=%q SSH_PUB_KEY=%q' "$name" "$ssh_key_content")" \
+        "$tmpscript"
+    rc=$?
+    rm -f "$tmpscript"
+    if [ "$rc" -eq 0 ]; then
+        step_status "OK" "$GREEN"
+    else
+        step_status "ошибка" "$RED"
     fi
 }
 
