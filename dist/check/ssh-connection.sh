@@ -45,13 +45,14 @@ copy_ssh_key_to_server() {
 
 # Если known_hosts уже содержит VPS_IP: сначала пробуем подключения "как есть" (с проверкой host key),
 # и только если все способы провалены — чистим known_hosts.
-# Выполняет «мягкую» проверку существующей host key:
-# для каждого порта пытается вход по паролю и по ключу без изменения known_hosts.
+# Логика перебора:
+# 1) сначала пробуем вход по ключу для всех портов/пользователей;
+# 2) если ключ не подошел нигде — переходим к входу по паролю.
 try_ssh() {
     local credentials_port
     local app_port
     local ports=()
-    local users=("$VPS_USER:$VPS_PASS")
+    local users=()
     local users_count
     local i
     local cfg_user
@@ -62,15 +63,27 @@ try_ssh() {
     local pass
     local out
     local rc=1
-    
-    credentials_port=$(yq e '.vps.port' "$CREDENTIALS")
-    # Массив портов для проверки
-    app_port=$(vps_ssh_application_port_optional)
-    [[ -n "$credentials_port" && "$credentials_port" != "null" && "$credentials_port" =~ ^[0-9]+$ ]] && ports+=("$credentials_port")
-    [[ -n "$app_port" && "$app_port" != "null" && "$app_port" =~ ^[0-9]+$ && "$app_port" != "$credentials_port" ]] && ports+=("$app_port")
+    local host_key_changed_detected=0
 
-    # Массив users формата "user:password" из config.yml -> vps.users[].
-    # Добавляем только пользователей, которым разрешен SSH (allow_ssh: true).
+    credentials_port="${VPS_PORT:-}"
+    if [[ -z "$credentials_port" && -f "$CREDENTIALS" ]]; then
+        credentials_port=$(yq e '.vps.port // ""' "$CREDENTIALS" 2>/dev/null || true)
+    fi
+    # Массив портов для проверки.
+    # Если хост уже есть в known_hosts — сначала пробуем нестандартный порт из config (app_port),
+    # затем credentials_port. Иначе — в обычном порядке (credentials_port первый).
+    app_port=$(vps_ssh_application_port_optional)
+    if [[ "${KNOWN_HOSTS_FOUND:-0}" == "1" ]]; then
+        [[ -n "$app_port"         && "$app_port"         != "null" && "$app_port"         =~ ^[0-9]+$ ]] && ports+=("$app_port")
+        [[ -n "$credentials_port" && "$credentials_port" != "null" && "$credentials_port" =~ ^[0-9]+$ && "$credentials_port" != "$app_port" ]] && ports+=("$credentials_port")
+    else
+        [[ -n "$credentials_port" && "$credentials_port" != "null" && "$credentials_port" =~ ^[0-9]+$ ]] && ports+=("$credentials_port")
+        [[ -n "$app_port"         && "$app_port"         != "null" && "$app_port"         =~ ^[0-9]+$ && "$app_port" != "$credentials_port" ]] && ports+=("$app_port")
+    fi
+
+    # Массив users формата "user:password".
+    # Порядок: сначала пользователи из config.yml (allow_ssh: true), затем credentials-пользователь (root).
+    # Это гарантирует что непривилегированный пользователь (ssh) проверяется раньше root.
     users_count=$(yq e '.vps.users | length' "$CONFIGURATIONS" 2>/dev/null || echo 0)
     for ((i = 0; i < users_count; i++)); do
         local cfg_allow_ssh
@@ -82,6 +95,13 @@ try_ssh() {
         [[ "$cfg_allow_ssh" == "true" ]] || continue
         users+=("$cfg_user:$cfg_pass")
     done
+    # Добавляем credentials-пользователя последним (если его ещё нет в списке).
+    local cred_entry="${VPS_USER}:${VPS_PASS}"
+    local already_added=0
+    for entry in "${users[@]}"; do
+        [[ "${entry%%:*}" == "$VPS_USER" ]] && already_added=1 && break
+    done
+    [[ "$already_added" -eq 0 ]] && users+=("$cred_entry")
 
     # Вход:
     #   $1 - port: номер порта SSH.
@@ -92,7 +112,7 @@ try_ssh() {
         local user="$2"
         local pass="$3"
 
-        step_name "Поключение к SSH" "$YELLOW"
+        step_name "Подключение к SSH: порт $port + пароль ($user)" "$YELLOW"
         out=$(
             sshpass -p "$pass" ssh -o StrictHostKeyChecking=no -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=password -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no -p "$port" "$user@$VPS_IP" "exit" \
                 2>&1
@@ -100,7 +120,7 @@ try_ssh() {
         rc=$?
         printf '%s\n' "$out" >>"$SSH_CONNECTION_LOG"
         if is_host_key_changed_error "$out"; then
-            step_status "Обнаружено изменение host key" "$YELLOW"
+            step_status "host key changed" "$RED"
             # Очистка known_hosts
             clear_known_hosts_for_vps
             # повторная попытка подключения
@@ -134,7 +154,7 @@ try_ssh() {
         local user="$2"
         local pass="$3"
         
-        step_name "Поключение к SSH: порт $port + ключ ($user)" "$YELLOW"
+        step_name "Подключение к SSH: порт $port + ключ ($user)" "$YELLOW"
         out=$(
             ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=publickey -o PasswordAuthentication=no -p "$port" "$user@$VPS_IP" "exit" \
                 2>&1
@@ -142,25 +162,19 @@ try_ssh() {
         rc=$?
         printf '%s\n' "$out" >>"$SSH_CONNECTION_LOG"
         if is_host_key_changed_error "$out"; then
-            # Очистка known_hosts
+            # При смене host key не продолжаем key-авторизацию:
+            # очищаем known_hosts и сразу переходим к паролю.
+            step_status "host key changed" "$RED"
             clear_known_hosts_for_vps
-            # повторная попытка подключения
-            step_name "Повтор: порт $port + ключ ($user)" "$YELLOW"
-            out=$(
-                ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=publickey -o PasswordAuthentication=no -p "$port" "$user@$VPS_IP" "exit" \
-                    2>&1
-            )
-            rc=$?
+            host_key_changed_detected=1
+            return 2
         fi
         if [ "$rc" -eq 0 ]; then
             step_status "OK" "$GREEN"
             export VPS_PORT="$port"
             export VPS_USER="$user"
             export VPS_PASS="$pass"
-            if copy_ssh_key_to_server; then
-                return 0
-            fi
-            return 1
+            return 0
         fi
         step_status "ошибка" "$RED"
         return "$rc"
@@ -173,7 +187,23 @@ try_ssh() {
         for entry in "${users[@]}"; do
             user="${entry%%:*}"
             pass="${entry#*:}"
-            if try_connect_using_password "$port" "$user" "$pass" || try_connect_using_key "$port" "$user" "$pass"; then
+            if try_connect_using_key "$port" "$user" "$pass"; then
+                return 0
+            fi
+            if [[ "$host_key_changed_detected" -eq 1 ]]; then
+                break 2
+            fi
+        done
+    done
+
+    for port in "${ports[@]}"; do
+        [[ -n "$port" && "$port" != "null" ]] || return 1
+        [[ "$port" =~ ^[0-9]+$ ]] || return 1
+
+        for entry in "${users[@]}"; do
+            user="${entry%%:*}"
+            pass="${entry#*:}"
+            if try_connect_using_password "$port" "$user" "$pass"; then
                 return 0
             fi
         done
@@ -197,19 +227,6 @@ if [ "${KNOWN_HOSTS_FOUND:-0}" = "1" ]; then
         exit 1
     fi
 else
-    # step_name "Проверка подключения по SSH" "$YELLOW"
-    # printf '========== %s  %s ==========\n' "$(date "+%Y-%m-%d %H:%M:%S")" "ssh-copy-id $VPS_PASS $VPS_USER@$VPS_IP:$VPS_PORT" >>"$SSH_CONNECTION_LOG"
-    # run_logged sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o BatchMode=yes -p "$VPS_PORT" "$VPS_USER@$VPS_IP" "exit"
-    # if [ $? -eq 0 ]; then
-    #     step_status "OK" "$GREEN"
-    # else
-    #     step_status "Ошибка" "$RED"
-    #     clear_known_hosts_for_vps "silent"
-    #     message "Сервер ($VPS_USER@$VPS_IP:$VPS_PORT)" "Недоступен" "$RED" "$RED"
-    #     print_log_file_paths "$SSH_CONNECTION_LOG"
-    #     exit 1
-    # fi
-
     copy_ssh_key_to_server
 fi
 

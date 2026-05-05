@@ -22,8 +22,12 @@ if [[ -n "${SSH_RULE_PORT_2:-}" && "${SSH_RULE_PORT_2}" != "${SSH_RULE_PORT_1:-}
     allow_ssh_port "${SSH_RULE_PORT_2}"
 fi
 
-if [[ -n "${OPENVPN_PORT:-}" ]]; then
-    _sudo ufw allow "${OPENVPN_PORT}/udp" comment 'OpenVPN' || true
+if [[ -n "${XUI_PANEL_PORT:-}" ]]; then
+    _sudo ufw allow "${XUI_PANEL_PORT}/tcp" comment '3x-ui panel' || true
+fi
+
+if [[ -n "${XUI_HTTPS_PORT:-}" ]]; then
+    _sudo ufw allow "${XUI_HTTPS_PORT}/tcp" comment '3x-ui HTTPS' || true
 fi
 
 if [[ -n "${OUTLINE_API_PORT:-}" ]]; then
@@ -32,6 +36,10 @@ fi
 
 if [[ -n "${OUTLINE_KEYS_PORT:-}" ]]; then
     _sudo ufw allow "${OUTLINE_KEYS_PORT}/tcp" comment 'Outline keys' || true
+fi
+
+if [[ -n "${AWG_PORT:-}" ]]; then
+    _sudo ufw allow "${AWG_PORT}/udp" comment 'AmneziaWG' || true
 fi
 
 enable_ufw() {

@@ -3,11 +3,14 @@ vps:
   # Список полезных пакетов, которыми часто пользуются
   packages:
     - nano
+    - curl
     - mc
     - tree
     - net-tools
     - htop
     - ncdu
+    - sysbench
+    - speedtest-cli
     - ufw
     - fail2ban
 
@@ -22,12 +25,18 @@ vps:
     fail2ban:
     ufw:
     docker:
-    openvpn:
-      port: 61194
     outline:
       port:
         api: 61195
         keys: 61196
+    3xui:
+      panel-port: 61197
+      panel-user: "admin"
+      panel-pass: "!@#QWE123qwe"
+    amneziawg:
+      port: 61198
+      clients: 10  # количество клиентских конфигов (1–253)
+      # image: "amneziavpn/amnezia-wg"  # опционально, если нужна другая версия образа
 
   # Пользователи, которыее должны быть  
   users:

@@ -28,12 +28,12 @@ CREDENTIALS="$BASE_DIR/credentials.yml"
 
 #######################################
 # shell-messages.sh — цветной вывод в терминале (заголовки, шаги, сообщения).
-source $LIBS_SCRIPTS/shell-messages.sh
+source "$LIBS_SCRIPTS/shell-messages.sh"
 # vps-config.sh — какие приложения включены в config.yml, опциональный порт SSH из config.
-source $LIBS_SCRIPTS/vps-config.sh
+source "$LIBS_SCRIPTS/vps-config.sh"
 # ssh.sh — подключение к VPS; сценарии на сервере не засоряют консоль, пишут в logs/.
-source $LIBS_SCRIPTS/ssh.sh
+source "$LIBS_SCRIPTS/ssh.sh"
 
 #######################################
 # main.sh — по шагам: проверка вашего ПК, ключи, сервер, затем установка по config.yml.
-source $DIST_DIR/main.sh
+source "$DIST_DIR/main.sh"

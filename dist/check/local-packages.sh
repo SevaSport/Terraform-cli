@@ -5,7 +5,7 @@
 title "Проверка локальных утилит (sshpass, yq)" "$BLUE"
 
 # Список пакетов, которые необходимо установить локально
-request_packeges=(sshpass yq)
+required_packages=(sshpass yq)
 
 # Пытаемся поставить недостающий пакет через менеджер ОС; на Windows — только сообщение (ручная установка)
 install_package() {
@@ -13,12 +13,9 @@ install_package() {
     if [ "$OS" == "macos" ]; then
         message "$package_name не найден и будет установлен через Homebrew" "" "$YELLOW"
 
-        # Проверяем, установлен ли Homebrew
         if command -v brew &> /dev/null; then
-            # Устанавливаем $package_name
             step_name "$package_name" "$YELLOW"
-            brew install $package_name &> /dev/null
-            if [ $? -eq 0 ]; then
+            if brew install "$package_name" &> /dev/null; then
                 step_status "Установлен" "$GREEN"
             else
                 step_status "Ошибка" "$RED"
@@ -32,13 +29,10 @@ install_package() {
     elif [ "$OS" == "ubuntu" ]; then
         message "$package_name не найден и будет установлен через APT" "" "$YELLOW"
 
-        # Обновляем списки пакетов
         sudo apt update &> /dev/null
 
-        # Устанавливаем $package_name
         step_name "$package_name" "$YELLOW"
-        sudo apt install -y $package_name &> /dev/null
-        if [ $? -eq 0 ]; then
+        if sudo apt install -y "$package_name" &> /dev/null; then
             step_status "Установлен" "$GREEN"
         else
             step_status "Ошибка" "$RED"
@@ -54,10 +48,10 @@ install_package() {
 }
 
 # Обход списка: уже в PATH — пропуск, иначе установка или выход с ошибкой
-for package in "${request_packeges[@]}"; do
-    if command -v $package &> /dev/null; then
+for package in "${required_packages[@]}"; do
+    if command -v "$package" &> /dev/null; then
         message "$package" "OK" "$YELLOW" "$GREEN"
     else
-        install_package $package
+        install_package "$package"
     fi
 done

@@ -7,15 +7,14 @@ title "Проверка SSH-клиента и ключей доступа" "$BLU
 
 # Генерация пары ключей, если пользователь согласится на интерактив ssh-keygen
 generate_ssh_keys() {
-    message "Генерация пары ключей RSA 4096" "запуск ssh-keygen" "$YELLOW" "$CYAN"
-    ssh-keygen -t rsa -b 4096
-    if [ $? -eq 0 ]; then
+    message "Генерация пары ключей Ed25519" "запуск ssh-keygen" "$YELLOW" "$CYAN"
+    if ssh-keygen -t ed25519; then
         pub_keys=$(ls ~/.ssh/*.pub 2> /dev/null)
         for key in $pub_keys; do
             message "Публичный ключ $key" "OK" "$YELLOW" "$GREEN"
         done
     else
-        message "Генерация пары ключей RSA 4096" "ошибка" "$YELLOW" "$RED"
+        message "Генерация пары ключей Ed25519" "ошибка" "$YELLOW" "$RED"
         exit 1
     fi
 }
@@ -25,12 +24,13 @@ if command -v ssh &>/dev/null; then
     message "SSH-клиент в системе" "OK" "$YELLOW" "$GREEN"
 else
     message "SSH-клиент в системе" "не найден, пробуем установить" "$YELLOW" "$CYAN"
+    local install_ok=0
     if [ "$OS" == "macos" ]; then
-        brew install openssh &> /dev/null
+        brew install openssh &> /dev/null && install_ok=1
     elif [ "$OS" == "ubuntu" ]; then
-        sudo apt install -y openssh-client &> /dev/null
+        sudo apt install -y openssh-client &> /dev/null && install_ok=1
     fi
-    if [ $? -eq 0 ]; then
+    if [ "$install_ok" -eq 1 ]; then
         message "Пакет OpenSSH (клиент)" "установлен" "$YELLOW" "$GREEN"
     else
         message "Пакет OpenSSH (клиент)" "ошибка установки" "$YELLOW" "$RED"
@@ -99,7 +99,7 @@ clear_known_hosts_for_vps() {
 }
 
 # Наличие записи помечаем, но удаляем только при реальной неудаче подключений (см. ssh-connection.sh).
-step_name "Найден $VPS_IP в ~/.ssh/known_hosts" "$YELLOW"
+step_name "Поиск $VPS_IP в ~/.ssh/known_hosts" "$YELLOW"
 if [ -f ~/.ssh/known_hosts ] && grep -q "$VPS_IP" ~/.ssh/known_hosts; then
     step_status "найден" "$YELLOW"
     export KNOWN_HOSTS_FOUND=1

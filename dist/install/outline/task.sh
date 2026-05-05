@@ -52,7 +52,9 @@ print_outline_access_payload() {
         return 0
     fi
 
-    printf '\n%s\n\n' "$payload"
+    echo
+    printf '%s\n' "$payload"
+    echo
 }
 
 # Установить Outline на VPS с портами api/keys из config.yml и по успеху показать пользователю JSON доступа из лога.
@@ -99,7 +101,7 @@ check_outline_requirements() {
 # Главная ветка модуля: при отсутствии сервера — загрузка установщика и установка; если уже работает — только запрос и печать JSON.
 # Параметры: нет (читает CONFIGURATIONS; модуль подключается только если в config объявлен outline). Возврат: при критической ошибке загрузки — exit 1 процесса.
 setup_outline() {
-    title "Установка VPN-сервера Outline" "$BLUE"
+    title "Установка сервера Outline" "$BLUE"
 
     if ! check_outline_requirements; then
         if load_outline_installer; then

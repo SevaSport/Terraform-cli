@@ -33,8 +33,9 @@ ssh_port_candidates() {
     local app_port=""
     local out=()
 
-    if [[ -n "${CREDENTIALS:-}" && -f "${CREDENTIALS:-}" ]]; then
-        cred_port=$(yq e '.vps.port' "$CREDENTIALS" 2>/dev/null || true)
+    cred_port="${VPS_PORT:-}"
+    if [[ -z "$cred_port" && -n "${CREDENTIALS:-}" && -f "${CREDENTIALS:-}" ]]; then
+        cred_port=$(yq e '.vps.port // ""' "$CREDENTIALS" 2>/dev/null || true)
     fi
     if type vps_ssh_application_port_optional >/dev/null 2>&1; then
         app_port=$(vps_ssh_application_port_optional 2>/dev/null || true)
@@ -59,22 +60,32 @@ _set_active_vps_port() {
     export VPS_PORT="$p"
 }
 
+# Кэш для значений из config.yml, которые не меняются в рамках сессии.
+_SSH_CONNECT_TIMEOUT=""
+_SSH_RECONNECT_ATTEMPTS=""
+
 # Таймаут TCP для ssh (секунды) из client.ssh-connect-timeout в config.yml, при отсутствии — 5.
 # Параметры: нет (читает CONFIGURATIONS). Возврат: одна строка с числом на stdout.
 ssh_connect_timeout() {
-    local t
-    t=$(yq e '(.client."ssh-connect-timeout" // 5)' "$CONFIGURATIONS" 2>/dev/null || true)
-    [[ -n "$t" && "$t" != "null" && "$t" =~ ^[0-9]+$ ]] || t=5
-    printf '%s\n' "$t"
+    if [[ -z "$_SSH_CONNECT_TIMEOUT" ]]; then
+        local t
+        t=$(yq e '(.client."ssh-connect-timeout" // 5)' "$CONFIGURATIONS" 2>/dev/null || true)
+        [[ -n "$t" && "$t" != "null" && "$t" =~ ^[0-9]+$ ]] || t=5
+        _SSH_CONNECT_TIMEOUT="$t"
+    fi
+    printf '%s\n' "$_SSH_CONNECT_TIMEOUT"
 }
 
 # Сколько раз повторять попытку SSH после сбоя — из client.ssh-reconnect-attempts, при отсутствии — 10.
 # Параметры: нет (читает CONFIGURATIONS). Возврат: одна строка с числом на stdout.
 ssh_reconnect_attempts() {
-    local n
-    n=$(yq e '(.client."ssh-reconnect-attempts" // 10)' "$CONFIGURATIONS" 2>/dev/null || true)
-    [[ -n "$n" && "$n" != "null" && "$n" =~ ^[0-9]+$ ]] || n=10
-    printf '%s\n' "$n"
+    if [[ -z "$_SSH_RECONNECT_ATTEMPTS" ]]; then
+        local n
+        n=$(yq e '(.client."ssh-reconnect-attempts" // 10)' "$CONFIGURATIONS" 2>/dev/null || true)
+        [[ -n "$n" && "$n" != "null" && "$n" =~ ^[0-9]+$ ]] || n=10
+        _SSH_RECONNECT_ATTEMPTS="$n"
+    fi
+    printf '%s\n' "$_SSH_RECONNECT_ATTEMPTS"
 }
 
 # Показать пользователю путь к логу последнего удалённого сценария (если переменная уже выставлена).
@@ -93,7 +104,10 @@ _remote_stream_sudo_header() {
     cat <<'EOSUDO'
 
 _sudo() {
-    if [[ -n "${SUDO_PASS:-}" ]]; then
+    # Сначала пробуем без пароля (NOPASSWD), чтобы не падать на устаревшем SUDO_PASS.
+    if sudo -n true >/dev/null 2>&1; then
+        sudo -n "$@"
+    elif [[ -n "${SUDO_PASS:-}" ]]; then
         printf '%s\n' "$SUDO_PASS" | sudo -S -p '' "$@"
     else
         sudo "$@"
@@ -101,7 +115,9 @@ _sudo() {
 }
 _sudo_tee_file() {
     local _dest="$1"
-    if [[ -n "${SUDO_PASS:-}" ]]; then
+    if sudo -n true >/dev/null 2>&1; then
+        sudo -n tee "$_dest" >/dev/null
+    elif [[ -n "${SUDO_PASS:-}" ]]; then
         {
             printf '%s\n' "$SUDO_PASS"
             cat
@@ -133,37 +149,66 @@ run_ssh() {
     return "$rc"
 }
 
-# Запустить локальный сценарий на VPS через stdin bash -s; весь вывод дописывается в файл лога, в консоль не идёт.
-# Параметры: $1 — путь к .sh. Возврат: код ssh; побочный эффект — export LAST_REMOTE_SCRIPT_LOG на путь лога.
-run_ssh_with_file() {
-    local file="$1"
-    local log rc=255 port
-    local timeout
-    timeout=$(ssh_connect_timeout)
-    log=$(remote_script_log_path "$file")
-    export LAST_REMOTE_SCRIPT_LOG="$log"
-    while IFS= read -r port; do
-        [[ -n "$port" ]] || continue
-        {
-            printf '========== %s  %s (port %s) ==========\n' "$(date "+%Y-%m-%d %H:%M:%S")" "$file" "$port"
-            {
-                _remote_stream_sudo_header
-                cat "$file"
-            } | ssh -o ConnectTimeout="$timeout" -p "$port" "$VPS_USER@$VPS_IP" "bash -s" 2>&1
-            rc=${PIPESTATUS[1]}
-        } >>"$log" 2>&1
-        if [[ "$rc" -eq 255 ]]; then
-            continue
+# Проверить, что для текущего VPS_USER доступны sudo-команды: без пароля (NOPASSWD) или с текущим VPS_PASS.
+# Интерактивных запросов здесь нет: при неуспехе возвращает 1 с подсказкой обновить пароль в credentials.yml/config.
+# Параметры: нет. Возврат: 0 если sudo подтверждён; 1 если не удалось подтвердить.
+ensure_remote_sudo_ready() {
+    [[ "${VPS_USER:-root}" == "root" ]] && return 0
+
+    _sq_quote() {
+        # Безопасная обёртка строки в single quotes для удалённого shell.
+        printf "%s" "$1" | sed "s/'/'\"'\"'/g"
+    }
+
+    if run_ssh "sudo -n true" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local candidates=()
+    local p pass_q users_count i
+
+    # 1) Текущий пароль (приоритетный).
+    [[ -n "${VPS_PASS:-}" ]] && candidates+=("$VPS_PASS")
+
+    # 2) Пароль из credentials.yml (может совпадать с sudo-паролем текущего пользователя).
+    if [[ -n "${CREDENTIALS:-}" && -f "${CREDENTIALS:-}" ]]; then
+        p=$(yq e '.vps.pass // ""' "$CREDENTIALS" 2>/dev/null || true)
+        p="${p//\"/}"
+        [[ -n "$p" && "$p" != "null" ]] && candidates+=("$p")
+    fi
+
+    # 3) Все пароли пользователей из config.yml (в том числе vps.users[].pass).
+    if [[ -n "${CONFIGURATIONS:-}" && -f "${CONFIGURATIONS:-}" ]]; then
+        users_count=$(yq e '.vps.users | length' "$CONFIGURATIONS" 2>/dev/null || echo 0)
+        [[ "$users_count" =~ ^[0-9]+$ ]] || users_count=0
+        for ((i = 0; i < users_count; i++)); do
+            p=$(yq e ".vps.users[$i].pass // \"\"" "$CONFIGURATIONS" 2>/dev/null || true)
+            p="${p//\"/}"
+            [[ -n "$p" && "$p" != "null" ]] && candidates+=("$p")
+        done
+    fi
+
+    # Пробуем кандидатов по очереди.
+    for p in "${candidates[@]}"; do
+        [[ -n "$p" ]] || continue
+        pass_q=$(_sq_quote "$p")
+        if run_ssh "printf '%s\n' ${pass_q} | sudo -S -p '' true" >/dev/null 2>&1; then
+            export VPS_PASS="$p"
+            return 0
         fi
-        _set_active_vps_port "$port"
-        return "$rc"
-    done < <(ssh_port_candidates)
-    return "$rc"
+    done
+
+    # Если step_name уже открыл строку, переносим вывод сообщений на новую строку.
+    echo
+    message "Проверка sudo для пользователя $VPS_USER" "не пройдена" "$RED" "$RED"
+    message "Пароль sudo" "обновите credentials.yml / config.yml" "$YELLOW" "$RED"
+    return 1
 }
 
-# Передать на VPS сценарий через stdin bash -s, предварительно выставив на удалённой стороне переменные окружения отдельными строками export (обходит запуск одной строки через dash на стороне ssh).
-# Параметры: $1 — одна или несколько строк export для удалённого процесса; $2 — путь к .sh. Возврат: код ssh; LAST_REMOTE_SCRIPT_LOG обновляется.
-run_ssh_bash() {
+# Внутренняя реализация: передать на VPS сценарий через stdin bash -s с опциональным env-префиксом.
+# Параметры: $1 — строки export для удалённого процесса (пусто — пропускается); $2 — путь к .sh.
+# Возврат: код ssh; LAST_REMOTE_SCRIPT_LOG обновляется.
+_run_ssh_script() {
     local env_prefix="$1"
     local script_file="$2"
     local log rc=255 port
@@ -171,6 +216,9 @@ run_ssh_bash() {
     timeout=$(ssh_connect_timeout)
     log=$(remote_script_log_path "$script_file")
     export LAST_REMOTE_SCRIPT_LOG="$log"
+
+    ensure_remote_sudo_ready || return 1
+
     while IFS= read -r port; do
         [[ -n "$port" ]] || continue
         {
@@ -189,6 +237,18 @@ run_ssh_bash() {
         return "$rc"
     done < <(ssh_port_candidates)
     return "$rc"
+}
+
+# Запустить локальный сценарий на VPS через stdin bash -s; весь вывод дописывается в файл лога, в консоль не идёт.
+# Параметры: $1 — путь к .sh. Возврат: код ssh; побочный эффект — export LAST_REMOTE_SCRIPT_LOG на путь лога.
+run_ssh_with_file() {
+    _run_ssh_script "" "$1"
+}
+
+# Передать на VPS сценарий через stdin bash -s, предварительно выставив переменные окружения на удалённой стороне.
+# Параметры: $1 — одна или несколько строк export для удалённого процесса; $2 — путь к .sh. Возврат: код ssh; LAST_REMOTE_SCRIPT_LOG обновляется.
+run_ssh_bash() {
+    _run_ssh_script "$1" "$2"
 }
 
 # Проверить по выводу dpkg -l на VPS, встречается ли подстрока в имени пакета.
@@ -282,5 +342,12 @@ remote_docker_engine_version() {
 # Получить с VPS краткую версию плагина docker compose v2 из вывода «docker compose version».
 # Параметры: нет. Возврат: строка на stdout (может быть пустой).
 remote_docker_compose_v2_version() {
-    run_ssh "docker compose version 2>/dev/null" | sed -E 's/[^0-9.]+([0-9.]+).*/\1/'
+    local out ver
+    out=$(run_ssh "docker compose version 2>/dev/null || docker-compose --version 2>/dev/null || true")
+    ver=$(printf '%s\n' "$out" | grep -Eo 'v?[0-9]+(\.[0-9]+){1,3}' | head -n1 | sed 's/^v//')
+    if [[ -z "$ver" ]]; then
+        printf '%s\n' "не найден"
+    else
+        printf '%s\n' "$ver"
+    fi
 }

@@ -21,7 +21,7 @@ setup_fail2ban() {
     if run_ssh_bash \
         "export SSH_PORT_FOR_JAIL=$ssh_port_for_jail" \
         "$SETUP_SCRIPTS/fail2ban/remote.sh"; then
-        message "Защита SSH от подбора пароля" "Включена" "$YELLOW" "$GREEN"
+        message "Защита SSH от подбора пароля" "Выполнена" "$YELLOW" "$GREEN"
         message "Сервис Fail2ban" "Запущен" "$YELLOW" "$GREEN"
     else
         message "Установка и настройка fail2ban" "Ошибка" "$YELLOW" "$RED"
