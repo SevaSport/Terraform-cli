@@ -37,7 +37,7 @@ wait_for_reboot() {
 
     message "Ожидание ответа после перезагрузки" "восстановления связи" "$YELLOW" "$CYAN"
 
-    while [ "$attempt" -le "$max_attempts" ]; do
+    while [[ "$attempt" -le "$max_attempts" ]]; do
         if run_ssh "true" >/dev/null 2>&1; then
             message "Сервер снова доступен по SSH" "Да" "$YELLOW" "$GREEN"
             return 0
@@ -59,7 +59,7 @@ update_packages() {
     run_ssh_with_file "$(dirname "$BASH_SOURCE")/remote.sh"
     local result=$?
 
-    if [ "$result" -eq 0 ]; then
+    if [[ "$result" -eq 0 ]]; then
         step_status "ОК" "$GREEN"
 
         step_name "Проверка необходимости перезагрузки VPS" "$YELLOW"
@@ -70,7 +70,7 @@ update_packages() {
             step_status "Нет" "$GREEN"
         fi
     else
-        step_status "ошибка (код: $result)" "$RED"
+        step_status "Ошибка (код: $result)" "$RED"
         print_last_remote_script_log_path
     fi
 

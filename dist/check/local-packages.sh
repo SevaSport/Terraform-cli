@@ -10,7 +10,7 @@ required_packages=(sshpass yq)
 # Пытаемся поставить недостающий пакет через менеджер ОС; на Windows — только сообщение (ручная установка)
 install_package() {
     local package_name="$1"
-    if [ "$OS" == "macos" ]; then
+    if [[ "$OS" == "macos" ]]; then
         message "$package_name не найден и будет установлен через Homebrew" "" "$YELLOW"
 
         if command -v brew &> /dev/null; then
@@ -26,7 +26,7 @@ install_package() {
             message "Инструкция и команда установки" "https://brew.sh" "$BLUE" "$YELLOW"
             exit 1
         fi
-    elif [ "$OS" == "ubuntu" ]; then
+    elif [[ "$OS" == "ubuntu" ]]; then
         message "$package_name не найден и будет установлен через APT" "" "$YELLOW"
 
         sudo apt update &> /dev/null
@@ -38,7 +38,7 @@ install_package() {
             step_status "Ошибка" "$RED"
             exit 1
         fi
-    elif [ "$OS" == "windows" ]; then
+    elif [[ "$OS" == "windows" ]]; then
         message "$package_name не найден" "Установите sshpass и yq вручную (Chocolatey, Scoop, либо запускайте скрипт из WSL/Ubuntu — см. spec.md)" "$RED" "$RED"
         exit 1
     else
@@ -50,7 +50,7 @@ install_package() {
 # Обход списка: уже в PATH — пропуск, иначе установка или выход с ошибкой
 for package in "${required_packages[@]}"; do
     if command -v "$package" &> /dev/null; then
-        message "$package" "OK" "$YELLOW" "$GREEN"
+        message "$package" "ОК" "$YELLOW" "$GREEN"
     else
         install_package "$package"
     fi

@@ -1,11 +1,12 @@
 #!/bin/bash
 
 # Выполняется на VPS: AmneziaWG в Docker (amneziavpn/amneziawg-go — официальный образ AWG2).
-# AWG_ACTION: install | check | client | add_client
+# AWG_ACTION: install | check | client | get_client | add_client
 #   install    — pull образ, сгенерировать ключи/обфускацию, создать конфиг, запустить контейнер;
 #                вывести клиентский конфиг + QR-код (если есть qrencode) в stdout.
 #   check      — запущен ли контейнер AWG_CONTAINER.
 #   client     — напечатать первый клиентский конфиг из AWG_DATA_DIR/client1.conf + QR-код.
+#   get_client — напечатать клиентский конфиг по номеру AWG_CLIENT_NUM + QR-код.
 #   add_client — добавить нового клиента (следующий свободный IP) + вывести конфиг и QR-код.
 # AWG_PORT, AWG_PUBLIC_HOST обязательны; остальные — с умолчаниями.
 set -euo pipefail
@@ -17,15 +18,20 @@ AWG_CONTAINER="${AWG_CONTAINER:-amnezia-awg2}"
 AWG_IMAGE="${AWG_IMAGE:-amneziavpn/amneziawg-go:latest}"
 AWG_PORT="${AWG_PORT:?AWG_PORT is required}"
 AWG_PUBLIC_HOST="${AWG_PUBLIC_HOST:?AWG_PUBLIC_HOST is required}"
+AWG_NETWORK="${AWG_NETWORK:-10.8.0.0}"
+AWG_DNS="${AWG_DNS:-1.1.1.1,1.0.0.1}"
+AWG_ALLOWED_IPS="${AWG_ALLOWED_IPS:-0.0.0.0/0}"
+AWG_CLIENT_NUM="${AWG_CLIENT_NUM:-1}"
 AWG_DATA_DIR="${AWG_DATA_DIR:-/opt/amneziawg}"
-AWG_SERVER_IFACE_IP="${AWG_SERVER_IFACE_IP:-10.8.0.1/24}"
-AWG_SUBNET="${AWG_SUBNET:-10.8.0.0/24}"
+AWG_SERVER_IFACE_IP="${AWG_SERVER_IFACE_IP:-${AWG_NETWORK%.*}.1/24}"
+AWG_SUBNET="${AWG_SUBNET:-${AWG_NETWORK}/24}"
 
 # Из значения вида «min-max» или одиночного числа выбрать случайное целое в диапазоне [min, max].
 # Используется для H1-H4 клиентского конфига: сервер принимает диапазон, клиент шлёт конкретное значение.
 
 # Сгенерировать пару ключей внутри контейнера AWG_IMAGE; вывести две строки: private public.
 awg_gen_keypair() {
+    echo "Docker-образ: ${AWG_IMAGE}" >&2
     _sudo docker run --rm "$AWG_IMAGE" sh -c \
         'pk=$(awg genkey 2>/dev/null || wg genkey); printf "%s\n" "$pk"; printf "%s\n" "$pk" | awg pubkey 2>/dev/null || printf "%s\n" "$pk" | wg pubkey'
 }
@@ -49,12 +55,14 @@ _awg_next_client_ip() {
     local server_conf="${AWG_DATA_DIR}/config/wg0.conf"
     local max_octet=1
     local ip octet
+    local subnet_prefix
+    subnet_prefix="${AWG_SUBNET%.*}"
     while IFS= read -r ip; do
         octet="${ip%%/*}"
         octet="${octet##*.}"
         [[ "$octet" =~ ^[0-9]+$ ]] && (( octet > max_octet )) && max_octet=$octet
     done < <(_sudo grep -i '^AllowedIPs' "$server_conf" 2>/dev/null | awk '{print $3}')
-    printf '%s' "10.8.0.$((max_octet + 1))"
+    printf '%s' "${subnet_prefix}.$((max_octet + 1))"
 }
 
 # Убедиться, что qrencode установлен (устанавливает через apt если нет).
@@ -208,8 +216,12 @@ _awg_sync_peer() {
 # Установить AmneziaWG: ключи, конфиг сервера, контейнер, UFW, первый клиентский конфиг.
 awg_install() {
     _sudo mkdir -p "${AWG_DATA_DIR}/config"
+    local subnet_prefix first_client_ip
+    subnet_prefix="${AWG_SUBNET%.*}"
+    first_client_ip="${subnet_prefix}.2"
 
     # Pull образа до генерации ключей (awg genkey работает внутри контейнера).
+    echo "Docker-образ: ${AWG_IMAGE}" >&2
     _sudo docker pull "$AWG_IMAGE"
 
     # Серверные ключи (однократно, не перезаписываем при повторной установке).
@@ -262,7 +274,7 @@ H4 = ${h4}
 [Peer]
 # client1
 PublicKey = ${client_pub}
-AllowedIPs = 10.8.0.2/32
+AllowedIPs = ${first_client_ip}/32
 EOF
     _sudo chmod 600 "${AWG_DATA_DIR}/config/wg0.conf"
 
@@ -270,6 +282,7 @@ EOF
     if _sudo docker ps -a --format '{{.Names}}' | grep -qx "${AWG_CONTAINER}"; then
         _sudo docker rm -f "${AWG_CONTAINER}"
     fi
+    echo "Docker-образ: ${AWG_IMAGE}" >&2
     _sudo docker run -d \
         --name "${AWG_CONTAINER}" \
         --restart unless-stopped \
@@ -289,8 +302,8 @@ EOF
     _sudo tee "${AWG_DATA_DIR}/client1.conf" > /dev/null <<EOF
 [Interface]
 PrivateKey = ${client_priv}
-Address = 10.8.0.2/32
-DNS = 1.1.1.1, 1.0.0.1
+Address = ${first_client_ip}/32
+DNS = ${AWG_DNS}
 Jc = 4
 Jmin = 10
 Jmax = 50
@@ -306,7 +319,7 @@ H4 = ${h4}
 [Peer]
 PublicKey = ${server_pub}
 Endpoint = ${AWG_PUBLIC_HOST}:${AWG_PORT}
-AllowedIPs = 0.0.0.0/0
+AllowedIPs = ${AWG_ALLOWED_IPS}
 PersistentKeepalive = 25
 EOF
     _sudo chmod 600 "${AWG_DATA_DIR}/client1.conf"
@@ -319,9 +332,28 @@ AWG_PORT=${AWG_PORT} \\
 AWG_PUBLIC_HOST=${AWG_PUBLIC_HOST} \\
 AWG_CONTAINER=${AWG_CONTAINER} \\
 AWG_IMAGE=${AWG_IMAGE} \\
+AWG_NETWORK=${AWG_NETWORK} \\
+AWG_DNS=${AWG_DNS} \\
+AWG_ALLOWED_IPS=${AWG_ALLOWED_IPS} \\
 bash /opt/amneziawg/manage.sh
 EOSCRIPT
     _sudo chmod +x /opt/amneziawg/add_client.sh
+
+    _sudo tee /opt/amneziawg/get_client.sh > /dev/null <<EOSCRIPT
+#!/bin/bash
+num="\${1:-1}"
+AWG_ACTION=get_client \\
+AWG_CLIENT_NUM="\${num}" \\
+AWG_PORT=${AWG_PORT} \\
+AWG_PUBLIC_HOST=${AWG_PUBLIC_HOST} \\
+AWG_CONTAINER=${AWG_CONTAINER} \\
+AWG_IMAGE=${AWG_IMAGE} \\
+AWG_NETWORK=${AWG_NETWORK} \\
+AWG_DNS=${AWG_DNS} \\
+AWG_ALLOWED_IPS=${AWG_ALLOWED_IPS} \\
+bash /opt/amneziawg/manage.sh
+EOSCRIPT
+    _sudo chmod +x /opt/amneziawg/get_client.sh
 
     _awg_print_config_and_qr "${AWG_DATA_DIR}/client1.conf"
 }
@@ -333,6 +365,23 @@ awg_print_client() {
         _awg_print_config_and_qr "$conf"
     else
         echo "awg-client-config: файл не найден: $conf" >&2
+        return 1
+    fi
+}
+
+# Прочитать и напечатать клиентский конфиг по номеру AWG_CLIENT_NUM + QR-код.
+awg_print_client_by_num() {
+    local num conf
+    num="${AWG_CLIENT_NUM:-1}"
+    if ! [[ "$num" =~ ^[0-9]+$ ]] || (( num < 1 )); then
+        echo "awg-client-config: некорректный номер клиента: ${num}" >&2
+        return 1
+    fi
+    conf="${AWG_DATA_DIR}/client${num}.conf"
+    if _sudo test -f "$conf"; then
+        _awg_print_config_and_qr "$conf"
+    else
+        echo "awg-client-config: указанной конфигурации нет: client ${num}" >&2
         return 1
     fi
 }
@@ -415,7 +464,7 @@ EOF
 [Interface]
 PrivateKey = ${client_priv}
 Address = ${client_ip}/32
-DNS = 1.1.1.1, 1.0.0.1
+DNS = ${AWG_DNS}
 Jc = ${jc:-4}
 Jmin = ${jmin:-10}
 Jmax = ${jmax:-50}
@@ -431,7 +480,7 @@ H4 = ${h4}
 [Peer]
 PublicKey = ${server_pub}
 Endpoint = ${AWG_PUBLIC_HOST}:${AWG_PORT}
-AllowedIPs = 0.0.0.0/0
+AllowedIPs = ${AWG_ALLOWED_IPS}
 PersistentKeepalive = 25
 EOF
     _sudo chmod 600 "${AWG_DATA_DIR}/client${client_num}.conf"
@@ -444,6 +493,7 @@ case "$AWG_ACTION" in
     check)      awg_check_running ;;
     install)    awg_install ;;
     client)     awg_print_client ;;
+    get_client) awg_print_client_by_num ;;
     add_client) awg_add_client ;;
     *)
         echo "AWG_ACTION: неизвестное действие: ${AWG_ACTION}" >&2

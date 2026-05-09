@@ -11,7 +11,7 @@ generate_ssh_keys() {
     if ssh-keygen -t ed25519; then
         pub_keys=$(ls ~/.ssh/*.pub 2> /dev/null)
         for key in $pub_keys; do
-            message "Публичный ключ $key" "OK" "$YELLOW" "$GREEN"
+            message "Публичный ключ $key" "ОК" "$YELLOW" "$GREEN"
         done
     else
         message "Генерация пары ключей Ed25519" "ошибка" "$YELLOW" "$RED"
@@ -21,16 +21,16 @@ generate_ssh_keys() {
 
 # Проверка, что в системе есть ssh-клиент
 if command -v ssh &>/dev/null; then
-    message "SSH-клиент в системе" "OK" "$YELLOW" "$GREEN"
+    message "SSH-клиент в системе" "ОК" "$YELLOW" "$GREEN"
 else
     message "SSH-клиент в системе" "не найден, пробуем установить" "$YELLOW" "$CYAN"
     local install_ok=0
-    if [ "$OS" == "macos" ]; then
+    if [[ "$OS" == "macos" ]]; then
         brew install openssh &> /dev/null && install_ok=1
-    elif [ "$OS" == "ubuntu" ]; then
+    elif [[ "$OS" == "ubuntu" ]]; then
         sudo apt install -y openssh-client &> /dev/null && install_ok=1
     fi
-    if [ "$install_ok" -eq 1 ]; then
+    if [[ "$install_ok" -eq 1 ]]; then
         message "Пакет OpenSSH (клиент)" "установлен" "$YELLOW" "$GREEN"
     else
         message "Пакет OpenSSH (клиент)" "ошибка установки" "$YELLOW" "$RED"
@@ -40,20 +40,20 @@ fi
 #----------
 # Каталог ~/.ssh и хотя бы один публичный ключ *.pub (иначе генерация)
 step_name "Проверка каталога ~/.ssh для ключей" "$YELLOW"
-if [ ! -d ~/.ssh ]; then
+if [[ ! -d ~/.ssh ]]; then
     step_status "не найден" "$RED"
     generate_ssh_keys
 else
-    step_status "OK" "$GREEN"
+    step_status "ОК" "$GREEN"
     # Перебираем публичные ключи
     pub_keys=$(ls ~/.ssh/*.pub 2> /dev/null)
 
-    if [ -z "$pub_keys" ]; then
+    if [[ -z "$pub_keys" ]]; then
         message "Публичные ключи ~/.ssh/*.pub" "не найдены" "$YELLOW" "$RED"
         generate_ssh_keys
     else
         for key in $pub_keys; do
-            message "Публичный ключ $key" "OK" "$YELLOW" "$GREEN"
+            message "Публичный ключ $key" "ОК" "$YELLOW" "$GREEN"
         done
     fi
 fi
@@ -64,7 +64,7 @@ clear_known_hosts_for_vps() {
     local port
     local removed=0
 
-    if [ -f "$known_hosts_file" ]; then
+    if [[ -f "$known_hosts_file" ]]; then
         # Удаляем запись для IP (включая hashed known_hosts формат).
         if ssh-keygen -R "$VPS_IP" -f "$known_hosts_file" >/dev/null 2>&1; then
             removed=1
@@ -85,13 +85,13 @@ clear_known_hosts_for_vps() {
         fi
     fi
 
-    if [ "$removed" -eq 1 ]; then
-        if [ -z "$silent" ]; then
+    if [[ "$removed" -eq 1 ]]; then
+        if [[ -z "$silent" ]]; then
             step_name "Очистка known_hosts для $VPS_IP" "$YELLOW"
             step_status "запись удалена" "$GREEN"
         fi
     else
-        if [ -z "$silent" ]; then
+        if [[ -z "$silent" ]]; then
             step_name "Очистка known_hosts для $VPS_IP" "$YELLOW"
             step_status "запись не найдена" "$YELLOW"
         fi
@@ -100,7 +100,7 @@ clear_known_hosts_for_vps() {
 
 # Наличие записи помечаем, но удаляем только при реальной неудаче подключений (см. ssh-connection.sh).
 step_name "Поиск $VPS_IP в ~/.ssh/known_hosts" "$YELLOW"
-if [ -f ~/.ssh/known_hosts ] && grep -q "$VPS_IP" ~/.ssh/known_hosts; then
+if [[ -f ~/.ssh/known_hosts ]] && grep -q "$VPS_IP" ~/.ssh/known_hosts; then
     step_status "найден" "$YELLOW"
     export KNOWN_HOSTS_FOUND=1
 else

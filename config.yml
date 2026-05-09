@@ -15,7 +15,7 @@ vps:
     - fail2ban
 
   # Отключение IPv6
-  ipv6-disable: true # Запускает скрипт switch-ipv6.sh
+  ipv6-disable: true # Запускает модуль dist/setup/ipv6-switch
 
   # Список приложений на сервере
   applications:
@@ -25,30 +25,38 @@ vps:
     fail2ban:
     ufw:
     docker:
-    outline:
-      port:
-        api: 61195
-        keys: 61196
-    3xui:
-      panel-port: 61197
-      panel-user: "admin"
-      panel-pass: "!@#QWE123qwe"
-    amneziawg:
-      port: 61198
-      clients: 10  # количество клиентских конфигов (1–253)
-      # image: "amneziavpn/amnezia-wg"  # опционально, если нужна другая версия образа
+    # outline:
+    #   port:
+    #     api: 61195
+    #     keys: 61196
+    # 3xui:
+    #   panel-port: 61197
+    #   panel-user: "admin"
+    #   panel-pass: "Secret!@#QWE123qwe"
+    # amneziawg:
+    #   port: 61198
+    #   #network: "10.8.0.0"                    # базовая сеть туннеля (опционально)
+    #   dns: "94.140.14.14,94.140.15.15"        # DNS для клиентов (опционально)
+    #   allowed-ips: "0.0.0.0/0"                # разрешённые IP-диапазоны для клиентов (опционально)
+    #   #image: "amneziavpn/amnezia-wg"         # образ Docker (опционально)
+    # wireguard:
+    #   port: 61199
+    #   #network: "10.8.0.0"                    # базовая сеть туннеля (опционально)
+    #   dns: "94.140.14.14,94.140.15.15"        # DNS для клиентов (опционально)
+    #   allowed-ips: "0.0.0.0/0"                # разрешённые IP-диапазоны для клиентов (опционально)
+    #   #image: "linuxserver/wireguard:latest"  # образ Docker (опционально)
 
-  # Пользователи, которыее должны быть  
+  # Пользователи, которые должны быть
   users:
-    # Пользователь, для управления контейнерами Docker
+    # Пользователь для управления контейнерами Docker
     - name: "docker"
-      pass: "!@#QWE123qwe" # Напиши сюда свой пароль !
+      pass: "Secret!@#QWE123qwe" # Напиши сюда свой пароль !
       home-dir: true
       allow_ssh: false # возможность подключения по SSH
       sudoer: false
     # Пользователь для сервисных работ и настройки VPS
     - name: "ssh"
-      pass: "!@#QWE123qwe" # Напиши сюда свой пароль !
+      pass: "Secret!@#QWE123qwe" # Напиши сюда свой пароль !
       home-dir: false
       allow_ssh: true
       sudoer: true

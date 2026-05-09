@@ -10,10 +10,10 @@ load_outline_installer() {
         "$(dirname "$BASH_SOURCE")/remote.sh"
     local result=$?
     step_name "Загрузка установщика Outline" "$YELLOW"
-    if [ "$result" -eq 0 ]; then
+    if [[ "$result" -eq 0 ]]; then
         step_status "ОК" "$GREEN"
     else
-        step_status "ошибка (код: $result)" "$RED"
+        step_status "Ошибка (код: $result)" "$RED"
         print_last_remote_script_log_path
     fi
     return "$result"
@@ -67,6 +67,7 @@ install_outline() {
     outline_api_port=$(yq e '.vps.applications.outline.port.api' "$CONFIGURATIONS")
     outline_keys_port=$(yq e '.vps.applications.outline.port.keys' "$CONFIGURATIONS")
 
+    message "Docker-образ" "quay.io/outline/shadowbox" "$YELLOW" "$CYAN"
     step_name "Установка VPN-сервера Outline" "$YELLOW"
     if run_ssh_bash \
         "export OUTLINE_ACTION=install OUTLINE_API_PORT=$outline_api_port OUTLINE_KEYS_PORT=$outline_keys_port" \

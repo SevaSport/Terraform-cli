@@ -42,6 +42,10 @@ if [[ -n "${AWG_PORT:-}" ]]; then
     _sudo ufw allow "${AWG_PORT}/udp" comment 'AmneziaWG' || true
 fi
 
+if [[ -n "${WG_PORT:-}" ]]; then
+    _sudo ufw allow "${WG_PORT}/udp" comment 'WireGuard' || true
+fi
+
 enable_ufw() {
     # stdin нельзя отдавать и паролю sudo, и ufw — оборачиваем в bash -c
     _sudo bash -c 'echo y | ufw --force enable'

@@ -23,9 +23,9 @@ _sudo bash -c "printf '%s\n' '# Порт SSH (drop-in)' 'Port ${NEW_PORT}' > '$P
 
 UNIT_SOCKET=/lib/systemd/system/ssh.socket
 [ -f "$UNIT_SOCKET" ] || UNIT_SOCKET=/usr/lib/systemd/system/ssh.socket
-if [ -f "$UNIT_SOCKET" ]; then
+if [[ -f "$UNIT_SOCKET" ]]; then
     _sudo mkdir -p /etc/systemd/system/ssh.socket.d
-    if [ "$SSH_IPV6_DISABLED" = "1" ]; then
+    if [[ "$SSH_IPV6_DISABLED" == "1" ]]; then
         _sudo bash -c "printf '%s\n' \
             '[Socket]' \
             'ListenStream=' \

@@ -303,7 +303,7 @@ wait_for_ssh_after_sshd_port_change() {
     local sleep_sec="${REBOOT_WAIT_TIME:-5}"
     local attempt=1
 
-    while [ "$attempt" -le "$max_attempts" ]; do
+    while [[ "$attempt" -le "$max_attempts" ]]; do
         if ssh_key_batch_login_ok 2>/dev/null; then
             message "Переподключение по новому SSH-порту" "Выполнено" "$YELLOW" "$GREEN"
             return 0
@@ -324,10 +324,10 @@ run_ssh_with_file_step_result() {
     run_ssh_with_file "$script_path"
     local result=$?
     step_name "$step_label" "$YELLOW"
-    if [ $result -eq 0 ]; then
+    if [[ $result -eq 0 ]]; then
         step_status "ОК" "$GREEN"
     else
-        step_status "ошибка (код: $result)" "$RED"
+        step_status "Ошибка (код: $result)" "$RED"
         print_last_remote_script_log_path
     fi
     return $result

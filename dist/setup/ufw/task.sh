@@ -43,6 +43,11 @@ setup_ufw() {
         awg_port=$(yq e '.vps.applications.amneziawg.port' "$CONFIGURATIONS")
     fi
 
+    wg_port=""
+    if config_application_enabled wireguard; then
+        wg_port=$(yq e '(.vps.applications.wireguard.port // 51820)' "$CONFIGURATIONS")
+    fi
+
     message "UFW: разрешен SSH (основной)" "${ssh_rule_port_1}/tcp" "$YELLOW" "$CYAN"
     if [[ -n "${ssh_rule_port_2:-}" ]]; then
         message "UFW: разрешен SSH (дополнительный)" "${ssh_rule_port_2}/tcp" "$YELLOW" "$CYAN"
@@ -62,8 +67,11 @@ setup_ufw() {
     if [[ -n "${awg_port:-}" && "${awg_port}" != "null" ]]; then
         message "UFW: разрешен AmneziaWG" "${awg_port}/udp" "$YELLOW" "$CYAN"
     fi
+    if [[ -n "${wg_port:-}" && "${wg_port}" != "null" ]]; then
+        message "UFW: разрешен WireGuard" "${wg_port}/udp" "$YELLOW" "$CYAN"
+    fi
     if run_ssh_bash \
-        "export SSH_RULE_PORT_1=$ssh_rule_port_1 SSH_RULE_PORT_2=${ssh_rule_port_2:-} XUI_PANEL_PORT=${xui_panel_port:-} XUI_HTTPS_PORT=${xui_https_port:-} OUTLINE_API_PORT=${outline_api_port:-} OUTLINE_KEYS_PORT=${outline_keys_port:-} AWG_PORT=${awg_port:-}" \
+        "export SSH_RULE_PORT_1=$ssh_rule_port_1 SSH_RULE_PORT_2=${ssh_rule_port_2:-} XUI_PANEL_PORT=${xui_panel_port:-} XUI_HTTPS_PORT=${xui_https_port:-} OUTLINE_API_PORT=${outline_api_port:-} OUTLINE_KEYS_PORT=${outline_keys_port:-} AWG_PORT=${awg_port:-} WG_PORT=${wg_port:-}" \
         "$SETUP_SCRIPTS/ufw/remote.sh"; then
         message "Настройка UFW" "Выполнена" "$YELLOW" "$GREEN"
         message "Сервис UFW" "Запущен" "$YELLOW" "$GREEN"

@@ -84,17 +84,20 @@ run_for_current_vps() {
     source "$SETUP_SCRIPTS/ufw/task.sh"
     source "$SETUP_SCRIPTS/fail2ban/task.sh"
 
-    # Установка Docker, если задано в applications.docker
+    # Установка Docker Engine
     source "$INSTALL_SCRIPTS/docker/task.sh"
 
-    # # VPN Outline
+    # Outline VPN (Docker)
     # source "$INSTALL_SCRIPTS/outline/task.sh"
 
-    # # 3x-ui (панель управления VPN)
+    # # 3x-ui — панель VPN
     # source "$INSTALL_SCRIPTS/3x-ui/task.sh"
 
     # # AmneziaWG VPN (Docker)
     # source "$INSTALL_SCRIPTS/amneziawg/task.sh"
+
+    # # WireGuard VPN (Docker)
+    # source "$INSTALL_SCRIPTS/wireguard/task.sh"
 }
 
 collect_vps_targets

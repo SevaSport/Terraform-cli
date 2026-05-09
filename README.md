@@ -21,7 +21,7 @@
    - обновление пакетов (apt), при необходимости перезагрузка;
    - установка пакетов из `vps.packages`;
    - пользователи из `vps.users` (пароли, sudo, ключи);
-   - усиление `sshd`, смена порта SSH из `applications.ssh.port` при настройке модуля;
+   - смена порта SSH из `applications.ssh.port` (модуль `ssh-server/port`);
    - UFW и fail2ban (если заданы в `applications`);
    - **Docker** — если в `config.yml` есть ключ `applications.docker`;
 
@@ -71,4 +71,4 @@ chmod +x run.sh
 
 Убедитесь, что в `credentials.yml` указан актуальный IP и что с вашей машины доступен SSH к VPS.
 
-Не забудьте раскоментировать строки в блоке applications `config.yml`
+Не забудьте раскомментировать строки в блоке applications `config.yml`

@@ -29,16 +29,16 @@ is_host_key_changed_error() {
 copy_ssh_key_to_server() {
     step_name "Копирование публичного SSH-ключа на сервер" "$YELLOW"
     printf '========== %s  %s ==========\n' "$(date "+%Y-%m-%d %H:%M:%S")" "ssh-copy-id" >>"$SSH_CONNECTION_LOG"
-    run_logged sshpass -p "$VPS_PASS" ssh-copy-id -o StrictHostKeyChecking=no -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o NumberOfPasswordPrompts=1 -p "$VPS_PORT" "$VPS_USER@$VPS_IP"
+    run_logged sshpass -p "$VPS_PASS" ssh-copy-id -o StrictHostKeyChecking=accept-new -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o NumberOfPasswordPrompts=1 -p "$VPS_PORT" "$VPS_USER@$VPS_IP"
     local rc=$?
-    if [ "$rc" -ne 0 ]; then
-        run_logged sshpass -p "$VPS_PASS" ssh-copy-id -p "$VPS_PORT" "$VPS_USER@$VPS_IP"
+    if [[ "$rc" -ne 0 ]]; then
+        run_logged sshpass -p "$VPS_PASS" ssh-copy-id -o StrictHostKeyChecking=accept-new -p "$VPS_PORT" "$VPS_USER@$VPS_IP"
         rc=$?
     fi
-    if [ "$rc" -eq 0 ]; then
-        step_status "OK" "$GREEN"
+    if [[ "$rc" -eq 0 ]]; then
+        step_status "ОК" "$GREEN"
     else
-        step_status "ошибка" "$RED"
+        step_status "Ошибка" "$RED"
     fi
     return "$rc"
 }
@@ -114,25 +114,24 @@ try_ssh() {
 
         step_name "Подключение к SSH: порт $port + пароль ($user)" "$YELLOW"
         out=$(
-            sshpass -p "$pass" ssh -o StrictHostKeyChecking=no -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=password -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no -p "$port" "$user@$VPS_IP" "exit" \
+            sshpass -p "$pass" ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=password -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no -p "$port" "$user@$VPS_IP" "exit" \
                 2>&1
         )
         rc=$?
         printf '%s\n' "$out" >>"$SSH_CONNECTION_LOG"
         if is_host_key_changed_error "$out"; then
             step_status "host key changed" "$RED"
-            # Очистка known_hosts
+            # Очистка known_hosts и повторная попытка с уже чистым состоянием
             clear_known_hosts_for_vps
-            # повторная попытка подключения
             step_name "Повтор: порт $port + пароль ($user)" "$YELLOW"
             out=$(
-                sshpass -p "$pass" ssh -o StrictHostKeyChecking=no -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=password -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no -p "$port" "$user@$VPS_IP" "exit" \
+                sshpass -p "$pass" ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=password -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no -p "$port" "$user@$VPS_IP" "exit" \
                     2>&1
             )
             rc=$?
         fi
-        if [ "$rc" -eq 0 ]; then
-            step_status "OK" "$GREEN"
+        if [[ "$rc" -eq 0 ]]; then
+            step_status "ОК" "$GREEN"
             export VPS_PORT="$port"
             export VPS_USER="$user"
             export VPS_PASS="$pass"
@@ -141,7 +140,7 @@ try_ssh() {
             fi
             return 1
         fi
-        step_status "ошибка" "$RED"
+        step_status "Ошибка" "$RED"
         return "$rc"
     }
 
@@ -156,7 +155,7 @@ try_ssh() {
         
         step_name "Подключение к SSH: порт $port + ключ ($user)" "$YELLOW"
         out=$(
-            ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=publickey -o PasswordAuthentication=no -p "$port" "$user@$VPS_IP" "exit" \
+            ssh -q -o StrictHostKeyChecking=accept-new -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=publickey -o PasswordAuthentication=no -p "$port" "$user@$VPS_IP" "exit" \
                 2>&1
         )
         rc=$?
@@ -169,14 +168,14 @@ try_ssh() {
             host_key_changed_detected=1
             return 2
         fi
-        if [ "$rc" -eq 0 ]; then
-            step_status "OK" "$GREEN"
+        if [[ "$rc" -eq 0 ]]; then
+            step_status "ОК" "$GREEN"
             export VPS_PORT="$port"
             export VPS_USER="$user"
             export VPS_PASS="$pass"
             return 0
         fi
-        step_status "ошибка" "$RED"
+        step_status "Ошибка" "$RED"
         return "$rc"
     }
 
@@ -217,11 +216,11 @@ try_ssh() {
 }
 
 # Если IP сервера найдена в known_hosts, пробуем подключиться, иначе копируем ключ на сервер
-if [ "${KNOWN_HOSTS_FOUND:-0}" = "1" ]; then
+if [[ "${KNOWN_HOSTS_FOUND:-0}" == "1" ]]; then
     # Пробуем подключиться к SSH-серверу, если не удалось, очищаем known_hosts
     try_ssh
     try_ssh_rc=$?
-    if [ "$try_ssh_rc" -ne 0 ]; then
+    if [[ "$try_ssh_rc" -ne 0 ]]; then
         message "Удаленный сервер недоступен" "" "$RED" "$RED"
         print_log_file_paths "$SSH_CONNECTION_LOG"
         exit 1
@@ -239,8 +238,8 @@ printf '========== %s  %s ==========\n' "$(date "+%Y-%m-%d %H:%M:%S")" "ssh-batc
     verify_rc=$?
 } >>"$SSH_CONNECTION_LOG" 2>&1
 
-if [ "$verify_rc" -eq 0 ]; then
-    step_status "OK" "$GREEN"
+if [[ "$verify_rc" -eq 0 ]]; then
+    step_status "ОК" "$GREEN"
 else
     step_status "Ошибка" "$RED"
     print_log_file_paths "$SSH_CONNECTION_LOG"

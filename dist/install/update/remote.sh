@@ -7,7 +7,7 @@ run_apt_with_retry() {
     local attempt=1
     local sleep_sec=1
 
-    while [ "$attempt" -le "$max_attempts" ]; do
+    while [[ "$attempt" -le "$max_attempts" ]]; do
         if _sudo apt update -y &&
             _sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y &&
             _sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y; then

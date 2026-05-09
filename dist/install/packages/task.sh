@@ -10,7 +10,7 @@ install_config_packages() {
 
     packages=$(yq eval '.vps.packages[]' "$CONFIGURATIONS")
 
-    if [ -n "$packages" ]; then
+    if [[ -n "$packages" ]]; then
         title "Установка пакетов из списка config.yml" "$BLUE"
 
         for app in $packages; do
@@ -25,7 +25,7 @@ install_config_packages() {
                 step_status "установлен" "$GREEN"
             else
                 result=$?
-                step_status "ошибка (код: $result)" "$RED"
+                step_status "Ошибка (код: $result)" "$RED"
             fi
         done
     else

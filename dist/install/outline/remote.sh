@@ -190,7 +190,7 @@ case "$OUTLINE_ACTION" in
         print_outline_payload
         ;;
     *)
-        echo "Unknown OUTLINE_ACTION: $OUTLINE_ACTION" >&2
+        echo "OUTLINE_ACTION: неизвестное действие: $OUTLINE_ACTION" >&2
         exit 2
         ;;
 esac

@@ -9,6 +9,15 @@ _read_awg_port() {
     yq e '.vps.applications.amneziawg.port' "$CONFIGURATIONS"
 }
 
+# Прочитать базовую сеть AmneziaWG из config.yml.
+# Параметры: нет (читает CONFIGURATIONS). Возврат: базовая сеть (например, 10.8.0.0) на stdout.
+_read_awg_network() {
+    local net
+    net=$(yq e '(.vps.applications.amneziawg.network // "10.8.0.0")' "$CONFIGURATIONS")
+    [[ -z "$net" || "$net" == "null" ]] && net="10.8.0.0"
+    printf '%s' "$net"
+}
+
 # Прочитать имя образа из config.yml (с умолчанием на официальный AWG2 образ).
 # Параметры: нет (читает CONFIGURATIONS). Возврат: имя образа на stdout.
 _read_awg_image() {
@@ -16,6 +25,24 @@ _read_awg_image() {
     img=$(yq e '(.vps.applications.amneziawg.image // "amneziavpn/amneziawg-go:latest")' "$CONFIGURATIONS")
     [[ -z "$img" || "$img" == "null" ]] && img="amneziavpn/amneziawg-go:latest"
     printf '%s' "$img"
+}
+
+# Прочитать DNS AmneziaWG из config.yml.
+# Параметры: нет (читает CONFIGURATIONS). Возврат: DNS-список на stdout.
+_read_awg_dns() {
+    local dns
+    dns=$(yq e '(.vps.applications.amneziawg.dns // "1.1.1.1,1.0.0.1")' "$CONFIGURATIONS")
+    [[ -z "$dns" || "$dns" == "null" ]] && dns="1.1.1.1,1.0.0.1"
+    printf '%s' "$dns"
+}
+
+# Прочитать AllowedIPs для клиентских конфигов AmneziaWG из config.yml.
+# Параметры: нет (читает CONFIGURATIONS). Возврат: список CIDR на stdout.
+_read_awg_allowed_ips() {
+    local ips
+    ips=$(yq e '(.vps.applications.amneziawg.allowed-ips // "0.0.0.0/0")' "$CONFIGURATIONS")
+    [[ -z "$ips" || "$ips" == "null" ]] && ips="0.0.0.0/0"
+    printf '%s' "$ips"
 }
 
 # Проверить, запущен ли контейнер AmneziaWG на сервере.
@@ -29,13 +56,20 @@ awg_container_running() {
 # Установить AmneziaWG на VPS и после успеха показать клиентский конфиг + QR-код.
 # Параметры: нет (читает CONFIGURATIONS, VPS_IP). Возврат: код ошибки при неудаче.
 install_amneziawg() {
-    local port image
+    local port image network dns allowed_ips
     port=$(_read_awg_port)
     image=$(_read_awg_image)
+    network=$(_read_awg_network)
+    dns=$(_read_awg_dns)
+    allowed_ips=$(_read_awg_allowed_ips)
 
+    message "Docker-образ" "$image" "$YELLOW" "$CYAN"
+    message "Сеть туннеля" "${network}/24" "$YELLOW" "$CYAN"
+    message "DNS клиентов" "$dns" "$YELLOW" "$CYAN"
+    message "AllowedIPs" "$allowed_ips" "$YELLOW" "$CYAN"
     step_name "Установка AmneziaWG (Docker)" "$YELLOW"
     if run_ssh_bash \
-        "export AWG_ACTION=install AWG_CONTAINER=amnezia-awg2 AWG_IMAGE=${image} AWG_PORT=${port} AWG_PUBLIC_HOST=${VPS_IP}" \
+        "export AWG_ACTION=install AWG_CONTAINER=amnezia-awg2 AWG_IMAGE=${image} AWG_PORT=${port} AWG_PUBLIC_HOST=${VPS_IP} AWG_NETWORK=${network} AWG_DNS=${dns} AWG_ALLOWED_IPS=${allowed_ips}" \
         "$(dirname "$BASH_SOURCE")/remote.sh"; then
         step_status "Выполнено" "$GREEN"
         _awg_copy_manage_script
@@ -60,29 +94,6 @@ load_awg_client_config() {
         "export AWG_ACTION=client AWG_CONTAINER=amnezia-awg2 AWG_PORT=${port} AWG_PUBLIC_HOST=${VPS_IP}" \
         "$(dirname "$BASH_SOURCE")/remote.sh"
     return $?
-}
-
-# Добавить нового клиента AmneziaWG на VPS.
-# Параметры: нет. Возврат: 0 при успехе; при ошибке — код и путь к логу.
-add_awg_client() {
-    local port image
-    port=$(_read_awg_port)
-    image=$(_read_awg_image)
-
-    step_name "Добавление нового клиента AmneziaWG" "$YELLOW"
-    if run_ssh_bash \
-        "export AWG_ACTION=add_client AWG_CONTAINER=amnezia-awg2 AWG_IMAGE=${image} AWG_PORT=${port} AWG_PUBLIC_HOST=${VPS_IP}" \
-        "$(dirname "$BASH_SOURCE")/remote.sh"; then
-        step_status "ОК" "$GREEN"
-        print_awg_client_config
-        print_awg_qr_code
-    else
-        local result=$?
-        step_status "Ошибка ($result)" "$RED"
-        print_last_remote_script_log_path
-        return "$result"
-    fi
-    return 0
 }
 
 # Извлечь из лога SSH клиентский конфиг AmneziaWG (между маркерами) и вывести в консоль.
@@ -121,11 +132,14 @@ print_awg_client_config() {
     printf '\n%s\n\n' "$config"
 }
 
-# Скопировать remote.sh на VPS как /opt/amneziawg/manage.sh и создать /opt/amneziawg/add_client.sh.
+# Скопировать remote.sh на VPS как /opt/amneziawg/manage.sh и создать /opt/amneziawg/add_client.sh и /opt/amneziawg/get_client.sh.
 # Параметры: нет. Возврат: 0 при успехе, не 0 при ошибке SSH.
 _awg_copy_manage_script() {
-    local awg_port img timeout ssh_port
+    local awg_port awg_network awg_dns awg_allowed_ips img timeout ssh_port
     awg_port=$(_read_awg_port)
+    awg_network=$(_read_awg_network)
+    awg_dns=$(_read_awg_dns)
+    awg_allowed_ips=$(_read_awg_allowed_ips)
     img=$(_read_awg_image)
     timeout=$(ssh_connect_timeout)
     while IFS= read -r ssh_port; do
@@ -135,10 +149,15 @@ _awg_copy_manage_script() {
             < "$(dirname "${BASH_SOURCE[0]}")/remote.sh" 2>/dev/null || continue
 
         # Создать обёртку add_client.sh с зашитыми параметрами этого VPS.
-        printf '#!/bin/bash\nAWG_ACTION=add_client AWG_PORT=%s AWG_PUBLIC_HOST=%s AWG_CONTAINER=amnezia-awg2 AWG_IMAGE=%s bash /opt/amneziawg/manage.sh\n' \
-            "$awg_port" "$VPS_IP" "$img" \
+        printf '#!/bin/bash\nAWG_ACTION=add_client AWG_PORT=%s AWG_PUBLIC_HOST=%s AWG_CONTAINER=amnezia-awg2 AWG_IMAGE=%s AWG_NETWORK=%s AWG_DNS=%s AWG_ALLOWED_IPS=%s bash /opt/amneziawg/manage.sh\n' \
+            "$awg_port" "$VPS_IP" "$img" "$awg_network" "$awg_dns" "$awg_allowed_ips" \
             | ssh -q -o ConnectTimeout="$timeout" -p "$ssh_port" "$VPS_USER@$VPS_IP" \
                 "sudo tee /opt/amneziawg/add_client.sh > /dev/null && sudo chmod +x /opt/amneziawg/add_client.sh" 2>/dev/null || true
+
+        printf '#!/bin/bash\nnum=\"${1:-1}\"\nAWG_ACTION=get_client AWG_CLIENT_NUM=\"${num}\" AWG_PORT=%s AWG_PUBLIC_HOST=%s AWG_CONTAINER=amnezia-awg2 AWG_IMAGE=%s AWG_NETWORK=%s AWG_DNS=%s AWG_ALLOWED_IPS=%s bash /opt/amneziawg/manage.sh\n' \
+            "$awg_port" "$VPS_IP" "$img" "$awg_network" "$awg_dns" "$awg_allowed_ips" \
+            | ssh -q -o ConnectTimeout="$timeout" -p "$ssh_port" "$VPS_USER@$VPS_IP" \
+                "sudo tee /opt/amneziawg/get_client.sh > /dev/null && sudo chmod +x /opt/amneziawg/get_client.sh" 2>/dev/null || true
 
         return 0
     done < <(ssh_port_candidates)
@@ -152,10 +171,14 @@ _print_awg_add_client_hint() {
     port=$(_read_awg_port)
     img=$(_read_awg_image)
     local ssh_cmd
+    local ssh_get_cmd
     ssh_cmd="ssh -p ${VPS_PORT} ${VPS_USER}@${VPS_IP} 'sudo /opt/amneziawg/add_client.sh'"
+    ssh_get_cmd="ssh -p ${VPS_PORT} ${VPS_USER}@${VPS_IP} 'sudo /opt/amneziawg/get_client.sh <номер_клиента>'"
     echo
     printf '%b%s%b\n' "$CYAN" "Добавить нового клиента AmneziaWG:" "$NC"
-    printf '%b%s%b\n\n' "$BLACK" "$ssh_cmd" "$NC"
+    printf '%b%s%b\n' "$BLACK" "$ssh_cmd" "$NC"
+    printf '%b%s%b\n' "$CYAN" "Получить конфиг клиента AmneziaWG по номеру:" "$NC"
+    printf '%b%s%b\n\n' "$BLACK" "$ssh_get_cmd" "$NC"
 }
 
 # Извлечь из лога SSH QR-код и вывести в консоль (если qrencode был установлен на сервере).
@@ -183,6 +206,7 @@ setup_amneziawg() {
     step_name "Проверка: контейнер AmneziaWG запущен" "$YELLOW"
     if awg_container_running; then
         step_status "Да" "$GREEN"
+        message "Docker-образ" "$(_read_awg_image)" "$YELLOW" "$CYAN"
         step_name "Получение клиентского конфига AmneziaWG" "$YELLOW"
         if load_awg_client_config; then
             step_status "ОК" "$GREEN"

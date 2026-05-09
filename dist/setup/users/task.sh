@@ -57,7 +57,7 @@ create_user() {
     local useradd_cmd="useradd"
     [ "$home_dir" = "true" ] && useradd_cmd="$useradd_cmd -m"
 
-    if [ "$group_exists" = true ]; then
+    if [[ "$group_exists" == "true" ]]; then
         useradd_cmd="$useradd_cmd -g '$name'"
     else
         useradd_cmd="$useradd_cmd -U"
@@ -80,13 +80,13 @@ add_sudo_permissions() {
     local sudo_file="/etc/sudoers.d/90-${name}"
 
     if run_ssh "usermod -aG sudo '$name'"; then
-        message " группа sudo для пользователя $name" "OK" "$YELLOW" "$GREEN"
+        message " группа sudo для пользователя $name" "ОК" "$YELLOW" "$GREEN"
     else
         message " группа sudo для пользователя $name" "ошибка" "$YELLOW" "$RED"
     fi
 
     if run_ssh "printf '%s\n' '$name ALL=(ALL:ALL) NOPASSWD:ALL' > '$sudo_file' && chmod 0440 '$sudo_file' && visudo -cf '$sudo_file' >/dev/null"; then
-        message " sudoers для пользователя $name" "OK" "$YELLOW" "$GREEN"
+        message " sudoers для пользователя $name" "ОК" "$YELLOW" "$GREEN"
     else
         message " sudoers для пользователя $name" "Ошибка" "$YELLOW" "$RED"
     fi
@@ -94,7 +94,7 @@ add_sudo_permissions() {
 
 find_ssh_key() {
     for key_file in ~/.ssh/*.pub; do
-        if [ -f "$key_file" ]; then
+        if [[ -f "$key_file" ]]; then
             echo "$key_file"
             return 0
         fi
@@ -111,9 +111,12 @@ copy_ssh_key() {
 
     local ssh_key_file ssh_key_content tmpscript rc
     ssh_key_file=$(find_ssh_key) || true
-    if [ -z "$ssh_key_file" ] || [ ! -f "$ssh_key_file" ]; then
-        message "Локальный публичный ключ (~/.ssh/*.pub)" "не найден" "$YELLOW" "$YELLOW"
-        return 0
+    if [[ -z "$ssh_key_file" || ! -f "$ssh_key_file" ]]; then
+        # Без ключа дальше идти нельзя: hardening отключит вход по паролю,
+        # и доступа к серверу не останется.
+        message "Публичный ключ для $name (allow_ssh: true)" "не найден — невозможно продолжить" "$RED" "$RED"
+        message "Создайте ключ командой" "ssh-keygen -t ed25519" "$YELLOW" "$CYAN"
+        return 1
     fi
 
     ssh_key_content=$(cat "$ssh_key_file")
@@ -132,8 +135,8 @@ EOF
         "$tmpscript"
     rc=$?
     rm -f "$tmpscript"
-    if [ "$rc" -eq 0 ]; then
-        step_status "OK" "$GREEN"
+    if [[ "$rc" -eq 0 ]]; then
+        step_status "ОК" "$GREEN"
     else
         step_status "ошибка" "$RED"
     fi
@@ -198,7 +201,7 @@ show_all_users() {
         step_status "ограниченные права" "$YELLOW"
     done
 
-    if [ ${#super_users[@]} -eq 0 ] && [ ${#regular_users[@]} -eq 0 ]; then
+    if [[ ${#super_users[@]} -eq 0 && ${#regular_users[@]} -eq 0 ]]; then
         step_name "Пользователи уже существуют на сервере" "$YELLOW"
         step_status "нет пользователей с UID >= 1000" "$YELLOW"
     fi
@@ -235,12 +238,30 @@ add_users() {
             fi
 
             if create_user "$name" "$pass" "$home_dir"; then
-                if [ "$sudoer" = "true" ]; then
+                if [[ "$sudoer" == "true" ]]; then
                     add_sudo_permissions "$name"
                 fi
-                copy_ssh_key "$name" "$allow_ssh"
+                if ! copy_ssh_key "$name" "$allow_ssh"; then
+                    exit 1
+                fi
             fi
         done
+
+        # Убеждаемся, что пользователь 'ssh' существует в конфиге с allow_ssh:true.
+        # AllowUsers запрещает вход всем, кого нет в списке — без этой проверки
+        # можно потерять доступ к серверу после hardening.
+        local _ssh_allow_ok=0
+        for ((i=0; i<users_count; i++)); do
+            local _n _a
+            _n=$(yq e ".vps.users[$i].name" "$CONFIGURATIONS")
+            _a=$(yq e ".vps.users[$i].allow_ssh" "$CONFIGURATIONS")
+            [[ "$_n" == "ssh" && "$_a" == "true" ]] && _ssh_allow_ok=1 && break
+        done
+        if [[ "$_ssh_allow_ok" -eq 0 ]]; then
+            message "Пользователь ssh (allow_ssh: true)" "не найден в vps.users" "$RED" "$RED"
+            message "AllowUsers заблокирует доступ к серверу" "добавьте пользователя ssh с allow_ssh: true" "$RED" "$RED"
+            exit 1
+        fi
 
         if ! apply_ssh_allow_users_policy; then
             exit 1
